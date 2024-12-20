@@ -12,8 +12,8 @@ set ( USE_FOLDERS ON)
 set ( PREDEFINED_TARGETS_FOLDER "CMakePredefinedTargets")
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+#set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+#set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # copy assets
 add_custom_target(copy_assets ALL
@@ -49,7 +49,3 @@ if(LINUX)
 elseif(WIN32)
   add_compile_definitions(WINDOWS)
 endif()
-
-# make sure the program runs in the right place from visual studio
-#set_target_properties(scuffed_mc PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
-#target_link_libraries(scuffed_mc imgui $<IF:$<PLATFORM_ID:Windows>,glfw3,glfw>)
