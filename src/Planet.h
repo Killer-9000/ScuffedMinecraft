@@ -4,9 +4,10 @@
 #include <unordered_map>
 #include <string>
 #include <queue>
-#include <glm/glm.hpp>
 #include <thread>
 #include <mutex>
+#include <glm/glm.hpp>
+#include <concurrentqueue.h>
 
 #include "ChunkPos.h"
 #include "ChunkData.h"
@@ -54,7 +55,7 @@ public:
 
 private:
 	std::unordered_map<ChunkPos, Chunk*, ChunkPosHash> chunks;
-	std::unordered_map<ChunkPos, ChunkData*, ChunkPosHash> chunkData;
+	//std::unordered_map<ChunkPos, ChunkData*, ChunkPosHash> chunkData;
 	std::queue<ChunkPos> chunkQueue;
 	std::queue<ChunkPos> chunkDataQueue;
 	std::queue<ChunkPos> chunkDataDeleteQueue;
@@ -68,8 +69,8 @@ private:
 	std::mutex chunkMutex;
 
 	std::vector<std::thread> generatorThreads;
-	std::queue<Chunk*> generatorChunks;
-	std::mutex generatorMutex;
+	moodycamel::ConcurrentQueue<Chunk*> generatorChunks;
+	//std::mutex generatorMutex;
 
 	bool shouldEnd = false;
 };

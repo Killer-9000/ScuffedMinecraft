@@ -38,6 +38,7 @@ target_include_directories ( scuffed_mc
 )
 target_link_libraries( scuffed_mc
     PUBLIC
+        concurrentqueue
         fmt::fmt
         glfw
 		glm::glm

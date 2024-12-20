@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <glm/gtc/type_ptr.hpp>
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath)
 {
@@ -91,7 +92,7 @@ void Shader::use()
 
 void Shader::setBool(const std::string& name, bool value)
 {
-	setBool(GetUniformLocation(name.c_str()), (int)value);
+	setBool(GetUniformLocation(name), (int)value);
 }
 void Shader::setBool(GLint loc, bool value)
 {
@@ -99,7 +100,7 @@ void Shader::setBool(GLint loc, bool value)
 }
 void Shader::setInt(const std::string& name, int value)
 {
-	setInt(GetUniformLocation(name.c_str()), value);
+	setInt(GetUniformLocation(name), value);
 }
 void Shader::setInt(GLint loc, int value)
 {
@@ -107,7 +108,7 @@ void Shader::setInt(GLint loc, int value)
 }
 void Shader::setFloat(const std::string& name, float value)
 {
-	setFloat(GetUniformLocation(name.c_str()), value);
+	setFloat(GetUniformLocation(name), value);
 }
 
 void Shader::setFloat(GLint loc, float value)
@@ -117,22 +118,22 @@ void Shader::setFloat(GLint loc, float value)
 
 void Shader::setFloat3(const std::string& name, glm::vec3 value)
 {
-	setFloat3(GetUniformLocation(name.c_str()), value);
+	setFloat3(GetUniformLocation(name), value);
 }
 
 void Shader::setFloat3(GLint loc, glm::vec3 value)
 {
-	glUniform3fv(loc, 1, &value.x);
+	glUniform3fv(loc, 1, glm::value_ptr(value));
 }
 
 void Shader::setMat4x4(const std::string& name, glm::mat4x4 value)
 {
-	setMat4x4(GetUniformLocation(name.c_str()), value);
+	setMat4x4(GetUniformLocation(name), value);
 }
 
 void Shader::setMat4x4(GLint loc, glm::mat4x4 value)
 {
-	glUniformMatrix4fv(loc, 1, GL_FALSE, &value[0][0]);
+	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
 
 void Shader::setMat4x4s(GLint loc, GLsizei count, glm::mat4x4* value)

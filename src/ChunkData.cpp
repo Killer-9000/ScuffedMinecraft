@@ -1,14 +1,17 @@
 #include "ChunkData.h"
 
+#include <tracy/Tracy.hpp>
 #include "Planet.h"
 
 ChunkData::ChunkData()
 {
+	ZoneScoped;
 	blockIDs = new uint16_t[CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH];
 }
 
 ChunkData::~ChunkData()
 {
+	ZoneScoped;
 	delete[] blockIDs;
 }
 

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <tracy/Tracy.hpp>
 
 #include "Planet.h"
 #include "Blocks.h"
@@ -21,6 +22,8 @@ Chunk::Chunk(ChunkPos chunkPos, Shader* shader, Shader* waterShader)
 
 Chunk::~Chunk()
 {
+	ZoneScoped;
+
 	glDeleteBuffers(1, &mainVBO);
 	glDeleteBuffers(1, &mainEBO);
 	glDeleteVertexArrays(1, &mainVAO);
@@ -32,10 +35,14 @@ Chunk::~Chunk()
 	glDeleteBuffers(1, &billboardVBO);
 	glDeleteBuffers(1, &billboardEBO);
 	glDeleteVertexArrays(1, &billboardVAO);
+
+	delete chunkData;
 }
 
 void Chunk::GenerateChunkMesh()
 {
+	ZoneScoped;
+
 	mainVertices.clear();
 	mainVertices.reserve(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH * 4 * 6);
 	mainIndices.clear();
@@ -71,8 +78,8 @@ void Chunk::GenerateChunkMesh()
 				}
 				else
 				{
-					int blockIndex = (x * CHUNK_WIDTH * CHUNK_WIDTH) + (z * CHUNK_HEIGHT) + 0;
-					topBlock = upData->GetBlock(x, 0, z);
+					//int blockIndex = (x * CHUNK_WIDTH * CHUNK_WIDTH) + (z * CHUNK_HEIGHT) + 0;
+					topBlock = chunkData->GetBlock(x, 0, z);
 				}
 
 				const Block* topBlockType = &Blocks::blocks[topBlock];
@@ -117,7 +124,7 @@ void Chunk::GenerateChunkMesh()
 					}
 					else
 					{
-						northBlock = northData->GetBlock(x, y, CHUNK_WIDTH - 1);
+						northBlock = chunkData->GetBlock(x, y, CHUNK_WIDTH - 1);
 					}
 
 					const Block* northBlockType = &Blocks::blocks[northBlock];
@@ -169,7 +176,7 @@ void Chunk::GenerateChunkMesh()
 					}
 					else
 					{
-						southBlock = southData->GetBlock(x, y, 0);
+						southBlock = chunkData->GetBlock(x, y, 0);
 					}
 
 					const Block* southBlockType = &Blocks::blocks[southBlock];
@@ -221,7 +228,7 @@ void Chunk::GenerateChunkMesh()
 					}
 					else
 					{
-						westBlock = westData->GetBlock(CHUNK_WIDTH - 1, y, z);
+						westBlock = chunkData->GetBlock(0, y, z);
 					}
 
 					const Block* westBlockType = &Blocks::blocks[westBlock];
@@ -273,7 +280,7 @@ void Chunk::GenerateChunkMesh()
 					}
 					else
 					{
-						eastBlock = eastData->GetBlock(0, y, z);
+						eastBlock = chunkData->GetBlock(CHUNK_WIDTH - 1, y, z);
 					}
 
 					const Block* eastBlockType = &Blocks::blocks[eastBlock];
@@ -326,7 +333,7 @@ void Chunk::GenerateChunkMesh()
 					else
 					{
 						//int blockIndex = x * chunkSize * chunkSize + z * chunkSize + (chunkSize - 1);
-						bottomBlock = downData->GetBlock(x, CHUNK_HEIGHT - 1, z);
+						bottomBlock = chunkData->GetBlock(x, CHUNK_HEIGHT - 1, z);
 					}
 
 					const Block* bottomBlockType = &Blocks::blocks[bottomBlock];
@@ -437,6 +444,8 @@ void Chunk::GenerateChunkMesh()
 
 void Chunk::PrepareRender()
 {
+	ZoneScoped;
+
 	if (!ready && generated)
 	{
 		// Solid
@@ -562,6 +571,8 @@ uint16_t Chunk::GetBlockAtPos(int x, int y, int z)
 
 void Chunk::UpdateBlock(int x, int y, int z, uint16_t newBlock)
 {
+	ZoneScoped;
+
 	chunkData->SetBlock(x, y, z, newBlock);
 
 	GenerateChunkMesh();
@@ -642,6 +653,8 @@ void Chunk::UpdateBlock(int x, int y, int z, uint16_t newBlock)
 
 void Chunk::UpdateChunk()
 {
+	ZoneScoped;
+
 	GenerateChunkMesh();
 
 	// Main

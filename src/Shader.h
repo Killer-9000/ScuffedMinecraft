@@ -29,13 +29,13 @@ public:
 	void setMat4x4(GLint loc, glm::mat4x4 value);
 	void setMat4x4s(GLint loc, GLsizei count, glm::mat4x4* value);
 
-	GLint GetUniformLocation(const char* name)
+	GLint GetUniformLocation(const std::string& name)
 	{
 		if (uniformLocations.find(name) == uniformLocations.end())
-			uniformLocations[name] = glGetUniformLocation(ID, name);
+			uniformLocations[name] = glGetUniformLocation(ID, name.c_str());
 		return uniformLocations[name];
 	}
 
 protected:
-	std::unordered_map<const char*, GLint> uniformLocations;
+	std::unordered_map<std::string, GLint> uniformLocations;
 };

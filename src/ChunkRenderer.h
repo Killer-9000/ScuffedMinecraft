@@ -27,7 +27,7 @@ namespace ChunkRenderer
 					chunk->PrepareRender();
 				}
 
-				if (!chunk->numTrianglesMain)
+				if (!chunk->ready || !chunk->numTrianglesMain)
 					continue;
 
 				solidShader->setMat4x4(modelLoc, chunk->modelMatrix);
@@ -47,7 +47,7 @@ namespace ChunkRenderer
 			glDisable(GL_CULL_FACE);
 			for (auto& [chunkPos, chunk] : chunks)
 			{
-				if (!chunk->numTrianglesBillboard)
+				if (!chunk->ready || !chunk->numTrianglesBillboard)
 					continue;
 
 				billboardShader->setMat4x4(modelLoc, chunk->modelMatrix);
@@ -76,7 +76,7 @@ namespace ChunkRenderer
 				chunk->PrepareRender();
 			}
 
-			if (!chunk->numTrianglesWater)
+			if (!chunk->ready || !chunk->numTrianglesWater)
 				continue;
 
 			waterShader->setMat4x4(modelLoc, chunk->modelMatrix);

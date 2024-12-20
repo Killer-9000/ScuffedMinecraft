@@ -25,12 +25,12 @@ public:
 
 public:
 	ChunkData* chunkData;
-	ChunkData* northData;
-	ChunkData* southData;
-	ChunkData* upData;
-	ChunkData* downData;
-	ChunkData* eastData;
-	ChunkData* westData;
+	//ChunkData* northData;
+	//ChunkData* southData;
+	//ChunkData* upData;
+	//ChunkData* downData;
+	//ChunkData* eastData;
+	//ChunkData* westData;
 	ChunkPos chunkPos;
 	bool ready;
 	bool generated;
