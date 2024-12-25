@@ -12,7 +12,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include <utils/stb_image.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -20,7 +20,10 @@
 #include <chrono>
 #include <thread>
 
-#include "Shader.h"
+#include "graphics/Buffer.h"
+#include "graphics/Shader.h"
+#include "graphics/Framebuffer.h"
+#include "graphics/VertexArrayObject.h"
 #include "Camera.h"
 #include "Planet.h"
 #include "Blocks.h"
@@ -61,6 +64,7 @@ bool uiEnabled = true;
 
 Camera camera;
 
+GLuint FBO;
 GLuint framebufferTexture;
 GLuint depthTexture;
 
@@ -215,13 +219,18 @@ int main(int argc, char *argv[])
 
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 
+	// Load Texture
+	stbi_set_flip_vertically_on_load(true);
+
 	// Initialize GLFW
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_DEPTH_BITS, 24);
+	//glfwWindowHint(GLFW_DOUBLEBUFFER, 1);
 
-	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
+	glfwWindowHint(GLFW_CONTEXT_DEBUG, true);
 
 	// Create window
 	GLFWwindow* window = glfwCreateWindow((int)windowX, (int)windowY, "Scuffed Minecraft", nullptr, nullptr);
@@ -268,19 +277,22 @@ int main(int argc, char *argv[])
 
 	// Create shaders
 	Shader shader("assets/shaders/main_vert.glsl", "assets/shaders/main_frag.glsl");
-	shader.use();
-
-	shader.setFloat("texMultiplier", 0.0625f);
+	{
+		ShaderBinder _(shader);
+		_.setFloat("texMultiplier", 0.0625f);
+	}
 
 	Shader waterShader("assets/shaders/water_vert.glsl", "assets/shaders/water_frag.glsl");
-	waterShader.use();
-
-	waterShader.setFloat("texMultiplier", 0.0625f);
+	{
+		ShaderBinder _(waterShader);
+		_.setFloat("texMultiplier", 0.0625f);
+	}
 
 	Shader billboardShader("assets/shaders/billboard_vert.glsl", "assets/shaders/billboard_frag.glsl");
-	billboardShader.use();
-
-	billboardShader.setFloat("texMultiplier", 0.0625f);
+	{
+		ShaderBinder _(billboardShader);
+		_.setFloat("texMultiplier", 0.0625f);
+	}
 
 	Shader framebufferShader("assets/shaders/framebuffer_vert.glsl", "assets/shaders/framebuffer_frag.glsl");
 
@@ -289,127 +301,78 @@ int main(int argc, char *argv[])
 	Shader crosshairShader("assets/shaders/crosshair_vert.glsl", "assets/shaders/crosshair_frag.glsl");
 
 	// Create post-processing framebuffer
-	unsigned int FBO;
-	glGenFramebuffers(1, &FBO);
+	glCreateFramebuffers(1, &FBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
 
-	glGenTextures(1, &framebufferTexture);
+	glCreateTextures(GL_TEXTURE_2D, 1, &framebufferTexture);
 	glBindTexture(GL_TEXTURE_2D, framebufferTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (GLsizei)windowX, (GLsizei)windowY, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, windowX, windowY, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebufferTexture, 0);
+	glNamedFramebufferTexture(FBO, GL_COLOR_ATTACHMENT0, framebufferTexture, 0);
 
-	glGenTextures(1, &depthTexture);
+	glCreateTextures(GL_TEXTURE_2D, 1, &depthTexture);
 	glBindTexture(GL_TEXTURE_2D, depthTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, (GLsizei)windowX, (GLsizei)windowY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, windowX, windowY, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+	glNamedFramebufferTexture(FBO, GL_DEPTH_ATTACHMENT, depthTexture, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
-	auto fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
-		std::cout << "Framebuffer error: " << fboStatus << '\n';
+	{
+		auto fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
+			std::cout << "Framebuffer error: " << std::hex << fboStatus << '\n';
+	}
 
-	unsigned int rectVAO, rectVBO;
-	glGenVertexArrays(1, &rectVAO);
-	glGenBuffers(1, &rectVBO);
-	glBindVertexArray(rectVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, rectVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(rectangleVertices), &rectangleVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+	VertexArrayObject rectVAO;
+	Buffer rectVBO(GL_ARRAY_BUFFER, sizeof(rectangleVertices), &rectangleVertices, GL_STATIC_DRAW);
+	rectVAO.BindVertexBuffer(0, rectVBO, 0, 4 * sizeof(float));
+	rectVAO.BindVertexBuffer(1, rectVBO, 0, 4 * sizeof(float));
+	rectVAO.SetAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0);
+	rectVAO.SetAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float));
 
-	framebufferShader.use();
-	framebufferShader.setInt("screenTexture", 0);
-	framebufferShader.setInt("depthTexture", 1);
+	{
+		ShaderBinder _(framebufferShader);
+		_.setInt("screenTexture", 0);
+		_.setInt("depthTexture", 1);
+	}
 
-	unsigned int outlineVAO, outlineVBO, outlineEBO;
-	glGenVertexArrays(1, &outlineVAO);
-	glGenBuffers(1, &outlineVBO);
-	glGenBuffers(1, &outlineEBO);
+	VertexArrayObject outlineVAO;
+	Buffer outlineVBO(GL_ARRAY_BUFFER, sizeof(outlineVertices), &outlineVertices, GL_STATIC_DRAW);
+	Buffer outlineEBO(GL_ELEMENT_ARRAY_BUFFER, sizeof(outlineIndicies), &outlineIndicies, GL_STATIC_DRAW);
+	outlineVAO.BindVertexBuffer(0, outlineVBO, 0, 3 * sizeof(float));
+	outlineVAO.SetAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0);
+	{
+		VAOBinder _(outlineVAO);
+		outlineEBO.Bind();
+	}
 
-	glBindVertexArray(outlineVAO);
-
-	glBindBuffer(GL_ARRAY_BUFFER, outlineVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(outlineVertices), &outlineVertices, GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, outlineEBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(outlineIndicies), &outlineIndicies, GL_STATIC_DRAW);
-
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-
-	unsigned int crosshairVAO, crosshairVBO;
-	glGenVertexArrays(1, &crosshairVAO);
-	glGenBuffers(1, &crosshairVBO);
-	glBindVertexArray(crosshairVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, crosshairVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(crosshairVertices), &crosshairVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	VertexArrayObject crosshairVAO;
+	Buffer crosshairVBO(GL_ARRAY_BUFFER, sizeof(crosshairVertices), &crosshairVertices, GL_STATIC_DRAW);
+	crosshairVAO.BindVertexBuffer(0, rectVBO, 0, 4 * sizeof(float));
+	crosshairVAO.BindVertexBuffer(1, rectVBO, 0, 4 * sizeof(float));
+	crosshairVAO.SetAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0);
+	crosshairVAO.SetAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float));
 
 	// Create terrain texture
-	unsigned int texture;
-	glCreateTextures(GL_TEXTURE_2D, 1, &texture);
-	 
-	// Set texture parameters
-	glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	// Load Texture
-	stbi_set_flip_vertically_on_load(true);
-
-	int width, height, nrChannels;
-	unsigned char* data = nullptr;
-	if (data = stbi_load("assets/sprites/block_map.png", &width, &height, &nrChannels, 0))
-	{
-		glTextureStorage2D(texture, 1, GL_RGBA8, width, height);
-		glTextureSubImage2D(texture, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		glGenerateTextureMipmap(texture);
-		stbi_image_free(data);
-		data = nullptr;
-	}
-	else
-	{
-		std::cout << "Failed to load texture\n";
-	}
+	Texture2D texture("assets/sprites/block_map.png");
+	texture.SetParameterI(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	texture.SetParameterI(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	texture.GenerateMipmaps();
 
 	// Create crosshair texture
-	unsigned int crosshairTexture;
-	glCreateTextures(GL_TEXTURE_2D, 1, &crosshairTexture);
-
-	// Set texture parameters
-	glTextureParameteri(crosshairTexture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTextureParameteri(crosshairTexture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-	// Load Crosshair Texture
-	if (data = stbi_load("assets/sprites/crosshair.png", &width, &height, &nrChannels, 0))
-	{
-		glTextureStorage2D(crosshairTexture, 1, GL_RGBA8, width, height);
-		glTextureSubImage2D(crosshairTexture, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		glGenerateTextureMipmap(crosshairTexture);
-		stbi_image_free(data);
-		data = nullptr;
-	}
-	else
-	{
-		std::cout << "Failed to load texture\n";
-	}
+	Texture2D crosshairTexture("assets/sprites/crosshair.png");
+	crosshairTexture.SetParameterI(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	crosshairTexture.SetParameterI(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	crosshairTexture.GenerateMipmaps();
 
 	// Create camera
-	camera = Camera(glm::vec3(0.0f, 72.0f, 0.0f));
+	camera = Camera(glm::vec3(CHUNK_WIDTH / 2, 72.0f, CHUNK_WIDTH / 2));
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -426,6 +389,8 @@ int main(int argc, char *argv[])
 	ImGui_ImplOpenGL3_Init("#version 330");
 
 	fpsStartTime = std::chrono::steady_clock::now();
+
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -453,22 +418,25 @@ int main(int argc, char *argv[])
 			fpsStartTime = currentTimePoint;
 		}
 
-		waterShader.use();
-		waterShader.setFloat("time", currentFrame);
-		outlineShader.use();
-		outlineShader.setFloat("time", currentFrame);
+		{
+			ShaderBinder _(waterShader);
+			_.setFloat("time", currentFrame);
+		}
+		{
+			ShaderBinder _(outlineShader);
+			_.setFloat("time", currentFrame);
+		}
 
 		// Input
 		processInput(window);
 
 		// Rendering
 		glEnable(GL_DEPTH_TEST);
-		//glBindFramebuffer(GL_FRAMEBUFFER, FBO);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, FBO);
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texture);
+
+		texture.BindUnit(0);
 
 		// New ImGui frame
 		ImGui_ImplOpenGL3_NewFrame();
@@ -483,21 +451,26 @@ int main(int argc, char *argv[])
 			glm::mat4 projection;
 			projection = glm::perspective(glm::radians(camera.Zoom), windowX / windowY, 0.1f, 10000.0f);
 
-			shader.use();
-			shader.setMat4x4("view", view);
-			shader.setMat4x4("projection", projection);
-
-			waterShader.use();
-			waterShader.setMat4x4("view", view);
-			waterShader.setMat4x4("projection", projection);
-
-			billboardShader.use();
-			billboardShader.setMat4x4("view", view);
-			billboardShader.setMat4x4("projection", projection);
-
-			outlineShader.use();
-			outlineShader.setMat4x4("view", view);
-			outlineShader.setMat4x4("projection", projection);
+			{
+				ShaderBinder _(shader);
+				_.setMat4x4("view", view);
+				_.setMat4x4("projection", projection);
+			}
+			{
+				ShaderBinder _(waterShader);
+				_.setMat4x4("view", view);
+				_.setMat4x4("projection", projection);
+			}
+			{
+				ShaderBinder _(billboardShader);
+				_.setMat4x4("view", view);
+				_.setMat4x4("projection", projection);
+			}
+			{
+				ShaderBinder _(outlineShader);
+				_.setMat4x4("view", view);
+				_.setMat4x4("projection", projection);
+			}
 		}
 
 		Planet::planet->Update(camera.Position);
@@ -511,17 +484,17 @@ int main(int argc, char *argv[])
 			auto result = Physics::Raycast(camera.Position, camera.Front, 5);
 			if (result.hit)
 			{
-				outlineShader.use();
+				ShaderBinder _(outlineShader);
 
 				// Set outline view to position
-				outlineShader.setBool("chunkBorder", false);
 				glm::mat4x4 model = glm::mat4x4(1);
 				model = glm::translate(model, { result.blockX, result.blockY, result.blockZ });
-				outlineShader.setMat4x4("model", model);
+				_.setBool("chunkBorder", false);
+				_.setMat4x4("model", model);
 
 				// Render
 				glDisable(GL_CULL_FACE);
-				glBindVertexArray(outlineVAO);
+				outlineVAO.Bind();
 				glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
 
 				glEnable(GL_CULL_FACE);
@@ -535,52 +508,44 @@ int main(int argc, char *argv[])
 		{
 			ZoneScopedN("Application::main chunk outline");
 
-			outlineShader.use();
+			ShaderBinder _(outlineShader);
+			glDisable(GL_CULL_FACE);
+
+			VAOBinder _1(outlineVAO);
 
 			// Set outline view to position
-			outlineShader.setBool("chunkBorder", true);
 			glm::mat4x4 model = glm::mat4x4(1);
 			model = glm::scale(model, { CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_WIDTH });
 			model = glm::translate(model, { Planet::planet->camChunkX, 0, Planet::planet->camChunkZ });
-			outlineShader.setMat4x4("model", model);
+			_.setBool("chunkBorder", true);
 
 			// Render
-			glDisable(GL_CULL_FACE);
-			glBindVertexArray(outlineVAO);
+			_.setMat4x4("model", model);
 			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
 
-			model = glm::mat4x4(1);
-			model = glm::scale(model, { CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_WIDTH });
-			model = glm::translate(model, { Planet::planet->camChunkX + 1, 0, Planet::planet->camChunkZ });
-			outlineShader.setMat4x4("model", model);
+			model = glm::translate(model, { 1, 0, 0 });
+			_.setMat4x4("model", model);
 			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
 
-			model = glm::mat4x4(1);
-			model = glm::scale(model, { CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_WIDTH });
-			model = glm::translate(model, { Planet::planet->camChunkX - 1, 0, Planet::planet->camChunkZ });
-			outlineShader.setMat4x4("model", model);
+			model = glm::translate(model, { -2, 0, 0 });
+			_.setMat4x4("model", model);
 			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
 
-			model = glm::mat4x4(1);
-			model = glm::scale(model, { CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_WIDTH });
-			model = glm::translate(model, { Planet::planet->camChunkX, 0, Planet::planet->camChunkZ + 1 });
-			outlineShader.setMat4x4("model", model);
+			model = glm::translate(model, { 1, 0, 1 });
+			_.setMat4x4("model", model);
 			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
 
-			model = glm::mat4x4(1);
-			model = glm::scale(model, { CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_WIDTH });
-			model = glm::translate(model, { Planet::planet->camChunkX, 0, Planet::planet->camChunkZ - 1 });
-			outlineShader.setMat4x4("model", model);
+			model = glm::translate(model, { 0, 0, -2 });
+			_.setMat4x4("model", model);
 			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
 
 			glEnable(GL_CULL_FACE);
 		}
 
-		if (false)
 		{
 			ZoneScopedN("Application::main post processing");
 
-			framebufferShader.use();
+			ShaderBinder _(framebufferShader);
 
 			// -- Post Processing Stuff -- //
 
@@ -607,22 +572,25 @@ int main(int argc, char *argv[])
 
 				if (Blocks::blocks[blockType].blockType == Block::LIQUID)
 				{
-					framebufferShader.setBool("underwater", true);
+					_.setBool("underwater", true);
 				}
 				else
 				{
-					framebufferShader.setBool("underwater", false);
+					_.setBool("underwater", false);
 				}
 			}
+			else
+				_.setBool("underwater", false);
 
 			// Post Processing
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glBindVertexArray(rectVAO);
+			Framebuffer::ClearBind();
+
 			glDisable(GL_DEPTH_TEST);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, framebufferTexture);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			VAOBinder _1(rectVAO);
+
+			glBindTextureUnit(0, framebufferTexture);
+			glBindTextureUnit(1, depthTexture);
+
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
 
@@ -633,18 +601,18 @@ int main(int argc, char *argv[])
 
 				// -- Render Crosshair -- //
 
-				// Render
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, crosshairTexture);
+				ShaderBinder _(crosshairShader);
+				VAOBinder _1(crosshairVAO);
 
-				crosshairShader.use();
+				// Render
+				crosshairTexture.BindUnit(0);
+
 				glDisable(GL_CULL_FACE);
 				glDisable(GL_DEPTH_TEST);
 				glEnable(GL_BLEND);
 				glEnable(GL_COLOR_LOGIC_OP);
 
-				crosshairShader.setMat4x4("projection", ortho);
-				glBindVertexArray(crosshairVAO);
+				_.setMat4x4("projection", ortho);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 
 				glEnable(GL_CULL_FACE);
@@ -665,8 +633,15 @@ int main(int argc, char *argv[])
 			ImGui::Text("Position: x: %f, y: %f, z: %f", camera.Position.x, camera.Position.y, camera.Position.z);
 			ImGui::Text("Direction: x: %f, y: %f, z: %f", camera.Front.x, camera.Front.y, camera.Front.z);
 			ImGui::Text("Selected Block: %s", Blocks::blocks[selectedBlock].blockName.c_str());
-			if (ImGui::SliderInt("Render Distance", &Planet::planet->renderDistance, 1, 64))
-				Planet::planet->ClearChunkQueue();
+			static int oldRenderDistance = Planet::planet->renderDistance;
+			if (ImGui::SliderInt("Render Distance", &Planet::planet->renderDistance, 1, 128))
+			{
+				if (Planet::planet->renderDistance < oldRenderDistance)
+					Planet::planet->ClearChunkQueue();
+				Planet::planet->UpdateChunkQueue();
+			}
+			ImGui::Checkbox("Unload chunks", &Planet::planet->deleteChunks);
+			ImGui::Checkbox("Load chunks", &Planet::planet->loadChunks);
 			//if (ImGui::SliderInt("Render Height", &Planet::planet->renderHeight, 0, 10))
 			//	Planet::planet->ClearChunkQueue();
 			ImGui::Checkbox("Show chunk borders", &showChunkBorders);
@@ -684,6 +659,10 @@ int main(int argc, char *argv[])
 		{
 			ZoneScopedN("Application::main Swap");
 			glfwSwapBuffers(window);
+		}
+
+		{
+			ZoneScopedN("Application::main Poll events");
 			glfwPollEvents();
 		}
 
@@ -705,12 +684,19 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height)
 	windowY = (float)height;
 	glViewport(0, 0, (GLsizei)windowX, (GLsizei)windowY);
 
+	GLint lastTexture = 0;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexture);
+
 	// resize framebuffer texture
 	glBindTexture(GL_TEXTURE_2D, framebufferTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (GLsizei)windowX, (GLsizei)windowY, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-	// resize framebuffer depth texture
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, windowX, windowY, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glNamedFramebufferTexture(FBO, GL_COLOR_ATTACHMENT0, framebufferTexture, 0);
+
 	glBindTexture(GL_TEXTURE_2D, depthTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, (GLsizei)windowX, (GLsizei)windowY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, windowX, windowY, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+	glNamedFramebufferTexture(FBO, GL_DEPTH_ATTACHMENT, depthTexture, 0);
+
+	glBindTexture(GL_TEXTURE_2D, lastTexture);
 }
 
 void processInput(GLFWwindow* window)
@@ -764,6 +750,9 @@ void processInput(GLFWwindow* window)
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
+	if (menuMode)
+		return;
+
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
 		auto result = Physics::Raycast(camera.Position, camera.Front, 5);

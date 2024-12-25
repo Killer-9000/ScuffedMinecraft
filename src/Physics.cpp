@@ -1,9 +1,11 @@
 #include "Physics.h"
 #include <iostream>
+#include "tracy/Tracy.hpp"
 #include "Blocks.h"
 
 Physics::RaycastResult Physics::Raycast(const glm::vec3 startPos, const glm::vec3 direction, const float maxDistance)
 {
+	ZoneScoped;
 	float currentDistance = 0;
 
 	while (currentDistance < maxDistance)

@@ -9,14 +9,47 @@
 class Shader
 {
 public:
-	// the program ID
 	unsigned int ID;
 
 	// constructor reads and builds the shader
 	Shader(const char* vertexPath, const char* fragmentPath);
-	// use/activate the shader
-	void use();
-	// utility uniform functions
+
+	void Bind()
+	{
+		glUseProgram(ID);
+	}
+
+	GLint GetUniformLocation(const std::string& name)
+	{
+		if (uniformLocations.find(name) == uniformLocations.end())
+			uniformLocations[name] = glGetUniformLocation(ID, name.c_str());
+		return uniformLocations[name];
+	}
+
+protected:
+	std::unordered_map<std::string, GLint> uniformLocations;
+};
+
+class ShaderBinder
+{
+public:
+	ShaderBinder(Shader& shader)
+		: ShaderBinder(&shader)
+	{ }
+	ShaderBinder(Shader* shader)
+	{
+		m_shader = shader;
+		glGetIntegerv(GL_PROGRAM_PIPELINE_BINDING, &m_oldShaderId);
+		if (m_shader->ID != m_oldShaderId)
+			glUseProgram(m_shader->ID);
+	}
+
+	~ShaderBinder()
+	{
+		if (m_shader->ID != m_oldShaderId)
+			glUseProgram(m_oldShaderId);
+	}
+
 	void setBool(const std::string& name, bool value);
 	void setBool(GLint loc, bool value);
 	void setInt(const std::string& name, int value);
@@ -29,13 +62,7 @@ public:
 	void setMat4x4(GLint loc, glm::mat4x4 value);
 	void setMat4x4s(GLint loc, GLsizei count, glm::mat4x4* value);
 
-	GLint GetUniformLocation(const std::string& name)
-	{
-		if (uniformLocations.find(name) == uniformLocations.end())
-			uniformLocations[name] = glGetUniformLocation(ID, name.c_str());
-		return uniformLocations[name];
-	}
-
 protected:
-	std::unordered_map<std::string, GLint> uniformLocations;
+	Shader* m_shader;
+	GLint m_oldShaderId;
 };

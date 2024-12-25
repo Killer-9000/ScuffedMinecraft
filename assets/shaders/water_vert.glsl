@@ -1,4 +1,4 @@
-#version 330 core
+#version 460 core
 
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aTexCoord;
@@ -9,7 +9,7 @@ out vec3 Normal;
 
 uniform float texMultiplier;
 
-uniform mat4 model;
+uniform mat4 models[128];
 uniform mat4 view;
 uniform mat4 projection;
 uniform float time;
@@ -36,7 +36,7 @@ void main()
 		pos.y -= .1;
 		pos.y += (sin(pos.x * 3.1415926535 / 2 + time) + sin(pos.z * 3.1415926535 / 2 + time * 1.5)) * .05;
 	}
-	gl_Position = projection * view * model * vec4(pos, 1.0);
+	gl_Position = projection * view * models[gl_BaseInstance] * vec4(pos, 1.0);
 	vec2 currentTex = aTexCoord;
 	currentTex.x += mod(floor(mod(time / animationTime, 1) * aFrames), texNum);
 	currentTex.y += floor(floor(mod(time / animationTime, 1) * aFrames) / texNum);

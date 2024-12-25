@@ -10,7 +10,7 @@ void main()
 {
 	vec4 texResult = texture(tex, TexCoord);
 
-	if (texResult.a < 0.01)
+	if (texResult.a == 0)
 		discard;
 
 	texResult.a = 0.8;

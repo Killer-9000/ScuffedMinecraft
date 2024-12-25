@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Chunk.h"
+#include "graphics/Misc.h"
 
 namespace ChunkRenderer
 {
@@ -13,12 +14,11 @@ namespace ChunkRenderer
 
 		out_chunksLoading = 0;
 		out_chunksRendered = 0;
-		glDisable(GL_BLEND);
 
+		ScopedEnable _(GL_BLEND, false);
+
+		if (Planet::planet->chunkMeshMutex.try_lock())
 		{
-			ZoneScopedN("Solid Rendering");
-			solidShader->use();
-			GLint modelLoc = solidShader->GetUniformLocation("model");
 			for (auto& [chunkPos, chunk] : chunks)
 			{
 				if (!chunk->ready)
@@ -26,36 +26,107 @@ namespace ChunkRenderer
 					out_chunksLoading++;
 					chunk->PrepareRender();
 				}
+			}
+			Planet::planet->chunkMeshMutex.unlock();
+		}
 
-				if (!chunk->ready || !chunk->numTrianglesMain)
+		{
+			ScopedEnable _1(GL_CULL_FACE);
+
+			ZoneScopedN("Solid Rendering");
+
+			ShaderBinder _2(solidShader);
+
+			Planet::DrawingData& data = Planet::planet->opaqueDrawingData;
+
+			VAOBinder _3(data.vao);
+			BufferBinder _4(data.ebo);
+			BufferBinder _5(data.ibo);
+
+			GLint modelLoc = solidShader->GetUniformLocation("models");
+			constexpr uint32_t MAX_DRAW_COMMANDS = 128;
+			DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
+			glm::mat4x4 matrices[MAX_DRAW_COMMANDS];
+			int drawCount = 0;
+			for (auto& [chunkPos, chunk] : chunks)
+			{
+				if (!chunk->ready || !chunk->opaqueEle)
 					continue;
 
-				solidShader->setMat4x4(modelLoc, chunk->modelMatrix);
+				matrices[drawCount] = chunk->modelMatrix;
+				commands[drawCount].count = chunk->opaqueEle->size;
+				commands[drawCount].instanceCount = 1;
+				commands[drawCount].firstIndex = chunk->opaqueEle->offset / sizeof(uint32_t);
+				commands[drawCount].baseVertex = chunk->opaqueTri->offset / sizeof(Vertex);
+				commands[drawCount].baseInstance = drawCount;
 
-				glBindVertexArray(chunk->mainVAO);
-				glDrawElements(GL_TRIANGLES, chunk->numTrianglesMain, GL_UNSIGNED_INT, 0);
-
+				drawCount++;
 				out_chunksRendered++;
+
+				if (drawCount == MAX_DRAW_COMMANDS)
+				{
+					_2.setMat4x4s(modelLoc, drawCount, matrices);
+					data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+					glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
+					drawCount = 0;
+				}
+			}
+
+			if (drawCount != 0)
+			{
+				_2.setMat4x4s(modelLoc, drawCount, matrices);
+				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 			}
 		}
 
 		{
-			ZoneScopedN("Billboard Rendering");
-			billboardShader->use();
+			ScopedEnable _1(GL_CULL_FACE, false);
 
-			GLint modelLoc = billboardShader->GetUniformLocation("model");
-			glDisable(GL_CULL_FACE);
+			ZoneScopedN("Billboard Rendering");
+
+			ShaderBinder _2(billboardShader);
+
+			Planet::DrawingData& data = Planet::planet->billboardDrawingData;
+
+			VAOBinder _3(data.vao);
+			BufferBinder _4(data.ebo);
+			BufferBinder _5(data.ibo);
+
+			GLint modelLoc = billboardShader->GetUniformLocation("models");
+			constexpr uint32_t MAX_DRAW_COMMANDS = 128;
+			DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
+			glm::mat4x4 matrices[MAX_DRAW_COMMANDS];
+			int drawCount = 0;
 			for (auto& [chunkPos, chunk] : chunks)
 			{
-				if (!chunk->ready || !chunk->numTrianglesBillboard)
+				if (!chunk->ready || !chunk->billboardEle)
 					continue;
 
-				billboardShader->setMat4x4(modelLoc, chunk->modelMatrix);
+				matrices[drawCount] = chunk->modelMatrix;
+				commands[drawCount].count = chunk->billboardEle->size;
+				commands[drawCount].instanceCount = 1;
+				commands[drawCount].firstIndex = chunk->billboardEle->offset / sizeof(uint32_t);
+				commands[drawCount].baseVertex = chunk->billboardTri->offset / sizeof(BillboardVertex);
+				commands[drawCount].baseInstance = drawCount;
 
-				glBindVertexArray(chunk->billboardVAO);
-				glDrawElements(GL_TRIANGLES, chunk->numTrianglesBillboard, GL_UNSIGNED_INT, 0);
+				drawCount++;
+
+				if (drawCount == MAX_DRAW_COMMANDS)
+				{
+					_2.setMat4x4s(modelLoc, drawCount, matrices);
+					data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+					glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
+					drawCount = 0;
+				}
 			}
-			glEnable(GL_CULL_FACE);
+
+			if (drawCount != 0)
+			{
+				_2.setMat4x4s(modelLoc, drawCount, matrices);
+				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
+			}
 		}
 	}
 
@@ -65,61 +136,50 @@ namespace ChunkRenderer
 	{
 		ZoneScoped;
 
-		glEnable(GL_BLEND);
-		waterShader->use();
+		ShaderBinder _(waterShader);
 
-		GLint modelLoc = waterShader->GetUniformLocation("model");
+		ScopedEnable _1(GL_BLEND);
+		ScopedEnable _2(GL_CULL_FACE, false);
+
+		Planet::DrawingData& data = Planet::planet->transparentDrawingData;
+
+		VAOBinder _3(data.vao);
+		BufferBinder _4(data.ebo);
+		BufferBinder _5(data.ibo);
+
+		GLint modelLoc = waterShader->GetUniformLocation("models");
+		constexpr uint32_t MAX_DRAW_COMMANDS = 128;
+		DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
+		glm::mat4x4 matrices[MAX_DRAW_COMMANDS];
+		int drawCount = 0;
 		for (auto& [chunkPos, chunk] : chunks)
 		{
-			if (!chunk->ready)
-			{
-				chunk->PrepareRender();
-			}
-
-			if (!chunk->ready || !chunk->numTrianglesWater)
+			if (!chunk->ready || !chunk->waterEle)
 				continue;
 
-			waterShader->setMat4x4(modelLoc, chunk->modelMatrix);
+			matrices[drawCount] = chunk->modelMatrix;
+			commands[drawCount].count = chunk->waterEle->size;
+			commands[drawCount].instanceCount = 1;
+			commands[drawCount].firstIndex = chunk->waterEle->offset / sizeof(uint32_t);
+			commands[drawCount].baseVertex = chunk->waterTri->offset / sizeof(Vertex);
+			commands[drawCount].baseInstance = drawCount;
 
-			glBindVertexArray(chunk->waterVAO);
-			glDrawElements(GL_TRIANGLES, chunk->numTrianglesWater, GL_UNSIGNED_INT, 0);
+			drawCount++;
 
-			//chunk->RenderWater(waterShader);
+			if (drawCount == MAX_DRAW_COMMANDS)
+			{
+				_.setMat4x4s(modelLoc, drawCount, matrices);
+				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
+				drawCount = 0;
+			}
 		}
 
-
-		//glBindVertexArray(Planet::planet->transparentVAO);
-
-		//GLint modelLoc = waterShader->GetUniformLocation("model");
-		//glm::mat4x4 matrices[128];
-		//GLsizei triangleCounts[128];
-		//GLint triangleOffsets[128];
-		//int drawCount = 0;
-		//for (auto& [chunkPos, chunk] : chunks)
-		//{
-		//	if (!chunk->ready)
-		//	{
-		//		chunk->PrepareRender();
-		//	}
-
-		//	if (!chunk->numTrianglesWater)
-		//		continue;
-
-
-		//	drawCount++;
-
-		//	if (drawCount == 128)
-		//	{
-		//		waterShader->setMat4x4s(modelLoc, drawCount, matrices);
-		//		glMultiDrawElementsBaseVertex(GL_TRIANGLES, triangleCounts, GL_UNSIGNED_INT, 0, drawCount, triangleOffsets);
-		//		drawCount = 0;
-		//	}
-		//}
-
-		//if (drawCount != 0)
-		//{
-		//	waterShader->setMat4x4s(modelLoc, drawCount, matrices);
-		//	glMultiDrawElementsBaseVertex(GL_TRIANGLES, triangleCounts, GL_UNSIGNED_INT, 0, drawCount, triangleOffsets);
-		//}
+		if (drawCount != 0)
+		{
+			_.setMat4x4s(modelLoc, drawCount, matrices);
+			data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+			glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
+		}
 	}
 }

@@ -7,11 +7,11 @@ struct Block
 public:
 	enum BLOCK_TYPE
 	{
-		SOLID,
-		TRANSPARENT,
-		LEAVES,
-		BILLBOARD,
-		LIQUID
+		SOLID = 1,
+		TRANSPARENT = 2,
+		LEAVES = 4,
+		BILLBOARD = 8,
+		LIQUID = 16
 	};
 
 	char topMinX, topMinY, topMaxX, topMaxY;

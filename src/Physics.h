@@ -26,5 +26,5 @@ namespace Physics
 
 	RaycastResult Raycast(glm::vec3 startPos, glm::vec3 direction, float maxDistance);
 
-	static constexpr float RAY_STEP = 0.01f;
+	static constexpr float RAY_STEP = 0.05f;
 }

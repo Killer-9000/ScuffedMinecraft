@@ -6,6 +6,7 @@
 #include <queue>
 #include <thread>
 #include <mutex>
+#include <shared_mutex>
 #include <glm/glm.hpp>
 #include <concurrentqueue.h>
 
@@ -21,35 +22,51 @@ class Planet
 {
 // Methods
 public:
-
-	struct ChunkRenderingData
+	struct DrawingData
 	{
-		GLuint vertexArray = 0;
-		GLuint vertexBuffer = 0;
-		GLuint elementBuffer = 0;
+		VertexArrayObject vao;
+		GeoBuffer vbo = GeoBuffer(GL_ARRAY_BUFFER);
+		GeoBuffer ebo = GeoBuffer(GL_ELEMENT_ARRAY_BUFFER);
+		Buffer ibo = Buffer(GL_DRAW_INDIRECT_BUFFER);
 	};
 
 	Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader);
 	~Planet();
 
+	void AddChunkToGenerate(ChunkPos chunkPos);
 	ChunkData* GetChunkData(ChunkPos chunkPos);
 	void Update(glm::vec3 cameraPos);
 
 	Chunk* GetChunk(ChunkPos chunkPos);
-	void ClearChunkQueue();
+	void ClearChunkQueue()
+	{
+		clearChunkQueue = 1;
+	}
+	void UpdateChunkQueue()
+	{
+		lastCamX++;
+	}
 
 private:
 	void ChunkThreadGenerator(int threadId);
-	void AddChunkToGenerate(ChunkPos chunkPos);
 
 // Variables
 public:
 	static Planet* planet;
 	unsigned int numChunks = 0, numChunksRendered = 0;
-	int renderDistance = 16;
+	int renderDistance = 1;
 	int renderHeight = 3;
+	int clearChunkQueue = 0;
+	bool deleteChunks = true;
+	bool loadChunks = true;
 
-	GLuint opaqueVAO = 0, billboardVAO = 0, transparentVAO = 0;
+	std::mutex chunkDeletionMutex;
+	std::shared_mutex chunkBlockMutex;
+	std::mutex chunkMeshMutex;
+
+	DrawingData opaqueDrawingData;
+	DrawingData billboardDrawingData;
+	DrawingData transparentDrawingData;
 
 	int camChunkX = -100, camChunkY = -100, camChunkZ = -100;
 
@@ -70,7 +87,6 @@ private:
 
 	std::vector<std::thread> generatorThreads;
 	moodycamel::ConcurrentQueue<Chunk*> generatorChunks;
-	//std::mutex generatorMutex;
 
 	bool shouldEnd = false;
 };

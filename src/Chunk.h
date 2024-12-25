@@ -1,13 +1,15 @@
 #pragma once
 
-#include <vector>
-#include <thread>
 #include <glm/glm.hpp>
+#include <thread>
+#include <vector>
 
-#include "Shader.h"
-#include "Vertex.h"
+#include "graphics/Buffer.h"
+#include "graphics/Shader.h"
+#include "graphics/VertexArrayObject.h"
 #include "ChunkPos.h"
 #include "ChunkData.h"
+#include "Vertex.h"
 
 class Chunk
 {
@@ -15,7 +17,7 @@ public:
 	Chunk(ChunkPos chunkPos, Shader* shader, Shader* waterShader);
 	~Chunk();
 
-	void GenerateChunkMesh();
+	void GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* back);
 	void PrepareRender();
 	void Render(Shader* mainShader, Shader* billboardShader);
 	void RenderWater(Shader* shader);
@@ -24,23 +26,22 @@ public:
 	void UpdateChunk();
 
 public:
-	ChunkData* chunkData;
-	//ChunkData* northData;
-	//ChunkData* southData;
-	//ChunkData* upData;
-	//ChunkData* downData;
-	//ChunkData* eastData;
-	//ChunkData* westData;
+	ChunkData chunkData;
 	ChunkPos chunkPos;
 	bool ready;
 	bool generated;
+	bool markedForDelete;
+	bool edgeUpdate;
 
 	glm::vec3 worldPos;
 	glm::mat4 modelMatrix;
 
-	unsigned int mainVAO, waterVAO, billboardVAO;
-	unsigned int mainVBO, mainEBO, waterVBO, waterEBO, billboardVBO, billboardEBO;
-	unsigned int numTrianglesMain, numTrianglesWater, numTrianglesBillboard;
+	GeoBuffer::Node* opaqueTri = nullptr;
+	GeoBuffer::Node* opaqueEle = nullptr;
+	GeoBuffer::Node* billboardTri = nullptr;
+	GeoBuffer::Node* billboardEle = nullptr;
+	GeoBuffer::Node* waterTri = nullptr;
+	GeoBuffer::Node* waterEle = nullptr;
 
 private:
 	std::vector<Vertex> mainVertices;

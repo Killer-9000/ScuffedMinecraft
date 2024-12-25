@@ -85,58 +85,53 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath)
 	glDeleteShader(fragment);
 }
 
-void Shader::use()
+void ShaderBinder::setBool(const std::string& name, bool value)
 {
-	glUseProgram(ID);
+	setBool(m_shader->GetUniformLocation(name), (int)value);
 }
-
-void Shader::setBool(const std::string& name, bool value)
-{
-	setBool(GetUniformLocation(name), (int)value);
-}
-void Shader::setBool(GLint loc, bool value)
+void ShaderBinder::setBool(GLint loc, bool value)
 {
 	glUniform1i(loc, (int)value);
 }
-void Shader::setInt(const std::string& name, int value)
+void ShaderBinder::setInt(const std::string& name, int value)
 {
-	setInt(GetUniformLocation(name), value);
+	setInt(m_shader->GetUniformLocation(name), value);
 }
-void Shader::setInt(GLint loc, int value)
+void ShaderBinder::setInt(GLint loc, int value)
 {
 	glUniform1i(loc, value);
 }
-void Shader::setFloat(const std::string& name, float value)
+void ShaderBinder::setFloat(const std::string& name, float value)
 {
-	setFloat(GetUniformLocation(name), value);
+	setFloat(m_shader->GetUniformLocation(name), value);
 }
 
-void Shader::setFloat(GLint loc, float value)
+void ShaderBinder::setFloat(GLint loc, float value)
 {
 	glUniform1f(loc, value);
 }
 
-void Shader::setFloat3(const std::string& name, glm::vec3 value)
+void ShaderBinder::setFloat3(const std::string& name, glm::vec3 value)
 {
-	setFloat3(GetUniformLocation(name), value);
+	setFloat3(m_shader->GetUniformLocation(name), value);
 }
 
-void Shader::setFloat3(GLint loc, glm::vec3 value)
+void ShaderBinder::setFloat3(GLint loc, glm::vec3 value)
 {
 	glUniform3fv(loc, 1, glm::value_ptr(value));
 }
 
-void Shader::setMat4x4(const std::string& name, glm::mat4x4 value)
+void ShaderBinder::setMat4x4(const std::string& name, glm::mat4x4 value)
 {
-	setMat4x4(GetUniformLocation(name), value);
+	setMat4x4(m_shader->GetUniformLocation(name), value);
 }
 
-void Shader::setMat4x4(GLint loc, glm::mat4x4 value)
+void ShaderBinder::setMat4x4(GLint loc, glm::mat4x4 value)
 {
 	glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(value));
 }
 
-void Shader::setMat4x4s(GLint loc, GLsizei count, glm::mat4x4* value)
+void ShaderBinder::setMat4x4s(GLint loc, GLsizei count, glm::mat4x4* value)
 {
 	glUniformMatrix4fv(loc, count, GL_FALSE, (float*)value);
 }
