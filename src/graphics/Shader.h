@@ -58,6 +58,7 @@ public:
 	void setFloat(GLint loc, float value);
 	void setFloat3(const std::string& name, glm::vec3 value);
 	void setFloat3(GLint loc, glm::vec3 value);
+	void setFloat3s(GLint loc, GLsizei count, glm::vec3* value);
 	void setMat4x4(const std::string& name, glm::mat4x4 value);
 	void setMat4x4(GLint loc, glm::mat4x4 value);
 	void setMat4x4s(GLint loc, GLsizei count, glm::mat4x4* value);

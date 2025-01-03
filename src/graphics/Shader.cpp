@@ -121,6 +121,11 @@ void ShaderBinder::setFloat3(GLint loc, glm::vec3 value)
 	glUniform3fv(loc, 1, glm::value_ptr(value));
 }
 
+void ShaderBinder::setFloat3s(GLint loc, GLsizei count, glm::vec3* value)
+{
+	glUniform3fv(loc, count, (float*)value);
+}
+
 void ShaderBinder::setMat4x4(const std::string& name, glm::mat4x4 value)
 {
 	setMat4x4(m_shader->GetUniformLocation(name), value);

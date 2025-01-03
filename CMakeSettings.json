@@ -13,7 +13,7 @@
       "variables": [
         {
           "name": "TRACY_ENABLE",
-          "value": "False",
+          "value": "True",
           "type": "BOOL"
         }
       ]

@@ -1,8 +1,10 @@
 #include "Chunk.h"
 
+#include <bitset>
+#include <iostream>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <iostream>
+#include <fmt/printf.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <tracy/Tracy.hpp>
@@ -25,13 +27,24 @@ Chunk::Chunk(ChunkPos chunkPos, Shader* shader, Shader* waterShader)
 Chunk::~Chunk()
 {
 	ZoneScoped;
+	Planet::planet->opaqueDrawingData.vbo.RemoveData(opaqueTri);
+	Planet::planet->opaqueDrawingData.ebo.RemoveData(opaqueEle);
+	Planet::planet->billboardDrawingData.vbo.RemoveData(billboardTri);
+	Planet::planet->billboardDrawingData.ebo.RemoveData(billboardEle);
+	Planet::planet->transparentDrawingData.vbo.RemoveData(waterTri);
+	Planet::planet->transparentDrawingData.ebo.RemoveData(waterEle);
 }
 
-void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* back)
+void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr front, Chunk::Ptr back)
 {
-	ready = false;
 	generated = false;
 	ZoneScoped;
+	ZoneNameF("Chunk::GenerateChunkMesh %i %i %i", chunkPos.x, chunkPos.y, chunkPos.z);
+
+	bool leftGenerated = left && left->chunkData.generated;
+	bool rightGenerated = right && right->chunkData.generated;
+	bool frontGenerated = front && front->chunkData.generated;
+	bool backGenerated = back && back->chunkData.generated;
 
 	mainVertices.clear();
 	mainIndices.clear();
@@ -42,427 +55,172 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 
 	if (true)
 	{
-		enum SIDES
+		enum
 		{
-			NONE =   0x0,
-			TOP =    0x1,
-			BOTTOM = 0x2,
-			WEST =   0x4,
-			EAST =   0x8,
-			NORTH =  0x10,
-			SOUTH =  0x20,
-			ALL =    0x3F
+			FRONT = 0,
+			BACK,
+			LEFT,
+			RIGHT,
+			TOP,
+			BOTTOM
 		};
-
-		int* shownSides = new int[CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH];
-
-		// Work out which sides are shown.
+		std::bitset<CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH * 6> exposedFaces;
 		for (int x = 0; x < CHUNK_WIDTH; x++)
 		{
 			for (int z = 0; z < CHUNK_WIDTH; z++)
 			{
 				for (int y = 0; y < CHUNK_HEIGHT; y++)
 				{
-					int blockIndex = ChunkData::GetIndex(x, y, z);
-					const Block* block = &Blocks::blocks[chunkData.GetBlock(blockIndex)];
+					int index = ChunkData::GetIndex(x, y, z);
 
-					if (block->blockType == Block::TRANSPARENT)
+					if (chunkData.GetBlock(index) == Blocks::AIR)
 					{
-						shownSides[blockIndex] = SIDES::NONE;
+						exposedFaces[index * 6 + FRONT] = 0;
+						exposedFaces[index * 6 + BACK] = 0;
+						exposedFaces[index * 6 + LEFT] = 0;
+						exposedFaces[index * 6 + RIGHT] = 0;
+						exposedFaces[index * 6 + TOP] = 0;
+						exposedFaces[index * 6 + BOTTOM] = 0;
+
 						continue;
 					}
 
-					if (block->blockType == Block::BILLBOARD)
-					{
-						shownSides[blockIndex] = SIDES::NONE;
-						continue;
-					}
+					exposedFaces[index * 6 + FRONT] = 1;
+					exposedFaces[index * 6 + BACK] = 1;
+					exposedFaces[index * 6 + LEFT] = 1;
+					exposedFaces[index * 6 + RIGHT] = 1;
+					exposedFaces[index * 6 + TOP] = 1;
+					exposedFaces[index * 6 + BOTTOM] = 1;
 
-					shownSides[blockIndex] = SIDES::NONE;
-
-					int showSide = Block::TRANSPARENT | Block::LEAVES | Block::BILLBOARD | Block::LIQUID;
-
-					Block::BLOCK_TYPE otherBlock;
-					// North side //
-					{
-						if (z > 0)
-						{
-							otherBlock = Blocks::blocks[chunkData.GetBlock(x, y, z - 1)].blockType;
-						}
-						else
-						{
-							if (back && back->chunkData.generated)
-								otherBlock = Blocks::blocks[back->chunkData.GetBlock(x, y, CHUNK_WIDTH - 1)].blockType;
-							else
-								otherBlock = Block::TRANSPARENT;
-						}
-
-						if (block->blockType == Block::LIQUID && otherBlock == Block::LIQUID)
-							shownSides[blockIndex] |= 0;
-						else
-							shownSides[blockIndex] |= (otherBlock & showSide) == otherBlock ? SIDES::NORTH : 0;
-					}
-
-					// South side //
-					{
-						if (z < CHUNK_WIDTH - 1)
-						{
-							otherBlock = Blocks::blocks[chunkData.GetBlock(x, y, z + 1)].blockType;
-						}
-						else
-						{
-							if (front && front->chunkData.generated)
-								otherBlock = Blocks::blocks[front->chunkData.GetBlock(x, y, 0)].blockType;
-							else
-								otherBlock = Block::TRANSPARENT;
-						}
-
-						if (block->blockType == Block::LIQUID && otherBlock == Block::LIQUID)
-							shownSides[blockIndex] |= 0;
-						else
-							shownSides[blockIndex] |= (otherBlock & showSide) == otherBlock ? SIDES::SOUTH : 0;
-					}
-
-					// East side //
-					{
-						if (x > 0)
-						{
-							otherBlock = Blocks::blocks[chunkData.GetBlock(x - 1, y, z)].blockType;
-						}
-						else
-						{
-							if (left && left->chunkData.generated)
-								otherBlock = Blocks::blocks[left->chunkData.GetBlock(CHUNK_WIDTH - 1, y, z)].blockType;
-							else
-								otherBlock = Block::TRANSPARENT;
-						}
-
-						if (block->blockType == Block::LIQUID && otherBlock == Block::LIQUID)
-							shownSides[blockIndex] |= 0;
-						else
-							shownSides[blockIndex] |= (otherBlock & showSide) == otherBlock ? SIDES::EAST : 0;
-					}
-
-					// West side //
-					{
-						if (x < CHUNK_WIDTH - 1)
-						{
-							otherBlock = Blocks::blocks[chunkData.GetBlock(x + 1, y, z)].blockType;
-						}
-						else
-						{
-							if (right && right->chunkData.generated)
-								otherBlock = Blocks::blocks[right->chunkData.GetBlock(0, y, z)].blockType;
-							else
-								otherBlock = Block::TRANSPARENT;
-						}
-
-						if (block->blockType == Block::LIQUID && otherBlock == Block::LIQUID)
-							shownSides[blockIndex] |= 0;
-						else
-							shownSides[blockIndex] |= (otherBlock & showSide) == otherBlock ? SIDES::WEST : 0;
-					}
-
-					// Bottom side //
-					{
-						if (y > 0)
-						{
-							otherBlock = Blocks::blocks[chunkData.GetBlock(x, y - 1, z)].blockType;
-						}
-						else
-						{
-							otherBlock = Block::TRANSPARENT;
-						}
-
-						if (block->blockType == Block::LIQUID && otherBlock == Block::LIQUID)
-							shownSides[blockIndex] |= 0;
-						else
-							shownSides[blockIndex] |= (otherBlock & showSide) == otherBlock ? SIDES::BOTTOM : 0;
-					}
-
-					// Top side //
-					{
-						if (y < CHUNK_HEIGHT - 1)
-						{
-							otherBlock = Blocks::blocks[chunkData.GetBlock(x, y + 1, z)].blockType;
-						}
-						else
-						{
-							otherBlock = Block::TRANSPARENT;
-						}
-
-						if (block->blockType == Block::LIQUID && otherBlock == Block::LIQUID)
-							shownSides[blockIndex] |= 0;
-						else
-							shownSides[blockIndex] |= (otherBlock & showSide) == otherBlock ? SIDES::TOP : 0;
-					}
+					if (z == CHUNK_WIDTH - 1 || chunkData.GetBlock(x, y, z + 1) != Blocks::AIR)
+						exposedFaces[index * 6 + FRONT] = 0;
+					if (z == 0 || chunkData.GetBlock(x, y, z - 1) != Blocks::AIR)
+						exposedFaces[index * 6 + BACK] = 0;
+					if (x == 0 || chunkData.GetBlock(x - 1, y, z) != Blocks::AIR)
+						exposedFaces[index * 6 + LEFT] = 0;
+					if (x == CHUNK_WIDTH - 1 || chunkData.GetBlock(x + 1, y, z) != Blocks::AIR)
+						exposedFaces[index * 6 + RIGHT] = 0;
+					if (y == CHUNK_HEIGHT - 1 || chunkData.GetBlock(x, y + 1, z) != Blocks::AIR)
+						exposedFaces[index * 6 + TOP] = 0;
+					if (y == 0 || chunkData.GetBlock(x, y - 1, z) != Blocks::AIR)
+						exposedFaces[index * 6 + BOTTOM] = 0;
 				}
 			}
 		}
+
+		mainVertices.reserve(10000);
+		mainIndices.reserve(10000);
+		waterVertices.reserve(10000);
+		waterIndices.reserve(10000);
+		billboardVertices.reserve(10000);
+		billboardIndices.reserve(10000);
 
 		uint32_t currentVertex = 0;
-		uint32_t currentLiquidVertex = 0;
-		uint32_t currentBillboardVertex = 0;
 
-		// Collect shown sides into triangles.
 		for (int x = 0; x < CHUNK_WIDTH; x++)
 		{
 			for (int z = 0; z < CHUNK_WIDTH; z++)
 			{
 				for (int y = 0; y < CHUNK_HEIGHT; y++)
 				{
-					int blockIndex = ChunkData::GetIndex(x, y, z);
-					const Block* block = &Blocks::blocks[chunkData.GetBlock(blockIndex)];
+					int index = ChunkData::GetIndex(x, y, z);
+					const Block& block = Blocks::blocks[chunkData.GetBlock(index)];
 
-					if (block->blockType == Block::BILLBOARD)
+					if (exposedFaces[index * 6 + FRONT])
 					{
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 0, z + .85355f, block->sideMinX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 0, z + .14645f, block->sideMaxX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 1, z + .85355f, block->sideMinX, block->sideMaxY));
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 1, z + .14645f, block->sideMaxX, block->sideMaxY));
+						mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block.sideMinX, block.sideMinY}, 1 });
+						mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block.sideMaxX, block.sideMinY}, 1 });
+						mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block.sideMinX, block.sideMaxY}, 1 });
+						mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block.sideMaxX, block.sideMaxY}, 1 });
 
-						billboardIndices.push_back(currentBillboardVertex + 0);
-						billboardIndices.push_back(currentBillboardVertex + 3);
-						billboardIndices.push_back(currentBillboardVertex + 1);
-						billboardIndices.push_back(currentBillboardVertex + 0);
-						billboardIndices.push_back(currentBillboardVertex + 2);
-						billboardIndices.push_back(currentBillboardVertex + 3);
-						currentBillboardVertex += 4;
-
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 0, z + .85355f, block->sideMinX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 0, z + .14645f, block->sideMaxX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 1, z + .85355f, block->sideMinX, block->sideMaxY));
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 1, z + .14645f, block->sideMaxX, block->sideMaxY));
-
-						billboardIndices.push_back(currentBillboardVertex + 0);
-						billboardIndices.push_back(currentBillboardVertex + 3);
-						billboardIndices.push_back(currentBillboardVertex + 1);
-						billboardIndices.push_back(currentBillboardVertex + 0);
-						billboardIndices.push_back(currentBillboardVertex + 2);
-						billboardIndices.push_back(currentBillboardVertex + 3);
-						currentBillboardVertex += 4;
-
-						continue;
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 3);
+						mainIndices.push_back(currentVertex + 1);
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 2);
+						mainIndices.push_back(currentVertex + 3);
+						currentVertex += 4;
 					}
-
-					if ((shownSides[blockIndex] & SIDES::NORTH) == SIDES::NORTH)
+					if (exposedFaces[index * 6 + BACK])
 					{
-						if (block->blockType == Block::LIQUID)
-						{
-							waterVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMinX, block->sideMinY, 0));
-							waterVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMaxX, block->sideMinY, 0));
-							waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMinX, block->sideMaxY, 0));
-							waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 0));
+						mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block.sideMinX, block.sideMinY}, 0 });
+						mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block.sideMaxX, block.sideMinY}, 0 });
+						mainVertices.push_back({ { x + 1, y + 1, z + 0 }, { block.sideMinX, block.sideMaxY}, 0 });
+						mainVertices.push_back({ { x + 0, y + 1, z + 0 }, { block.sideMaxX, block.sideMaxY}, 0 });
 
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							waterIndices.push_back(currentLiquidVertex + 1);
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 2);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							currentLiquidVertex += 4;
-						}
-						else
-						{
-							mainVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMinX, block->sideMinY, 0));
-							mainVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMaxX, block->sideMinY, 0));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMinX, block->sideMaxY, 0));
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 0));
-
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 3);
-							mainIndices.push_back(currentVertex + 1);
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 2);
-							mainIndices.push_back(currentVertex + 3);
-							currentVertex += 4;
-						}
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 3);
+						mainIndices.push_back(currentVertex + 1);
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 2);
+						mainIndices.push_back(currentVertex + 3);
+						currentVertex += 4;
 					}
-					if ((shownSides[blockIndex] & SIDES::SOUTH) == SIDES::SOUTH)
+					if (exposedFaces[index * 6 + LEFT])
 					{
-						if (block->blockType == Block::LIQUID)
-						{
-							waterVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMinX, block->sideMinY, 1));
-							waterVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMaxX, block->sideMinY, 1));
-							waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMinX, block->sideMaxY, 1));
-							waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 1));
+						mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block.sideMinX, block.sideMinY}, 2 });
+						mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block.sideMaxX, block.sideMinY}, 2 });
+						mainVertices.push_back({ { x + 0, y + 1, z + 0 }, { block.sideMinX, block.sideMaxY}, 2 });
+						mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block.sideMaxX, block.sideMaxY}, 2 });
 
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							waterIndices.push_back(currentLiquidVertex + 1);
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 2);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							currentLiquidVertex += 4;
-						}
-						else
-						{
-							mainVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMinX, block->sideMinY, 1));
-							mainVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMaxX, block->sideMinY, 1));
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMinX, block->sideMaxY, 1));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 1));
-
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 3);
-							mainIndices.push_back(currentVertex + 1);
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 2);
-							mainIndices.push_back(currentVertex + 3);
-							currentVertex += 4;
-						}
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 3);
+						mainIndices.push_back(currentVertex + 1);
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 2);
+						mainIndices.push_back(currentVertex + 3);
+						currentVertex += 4;
 					}
-					if ((shownSides[blockIndex] & SIDES::EAST) == SIDES::EAST)
+					if (exposedFaces[index * 6 + RIGHT])
 					{
-						if (block->blockType == Block::LIQUID)
-						{
-							waterVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMinX, block->sideMinY, 2));
-							waterVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMaxX, block->sideMinY, 2));
-							waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMinX, block->sideMaxY, 2));
-							waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 2));
+						mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block.sideMinX, block.sideMinY}, 3 });
+						mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block.sideMaxX, block.sideMinY}, 3 });
+						mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block.sideMinX, block.sideMaxY}, 3 });
+						mainVertices.push_back({ { x + 1, y + 1, z + 0 }, { block.sideMaxX, block.sideMaxY}, 3 });
 
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							waterIndices.push_back(currentLiquidVertex + 1);
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 2);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							currentLiquidVertex += 4;
-						}
-						else
-						{
-							mainVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMinX, block->sideMinY, 2));
-							mainVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMaxX, block->sideMinY, 2));
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMinX, block->sideMaxY, 2));
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 2));
-
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 3);
-							mainIndices.push_back(currentVertex + 1);
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 2);
-							mainIndices.push_back(currentVertex + 3);
-							currentVertex += 4;
-						}
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 3);
+						mainIndices.push_back(currentVertex + 1);
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 2);
+						mainIndices.push_back(currentVertex + 3);
+						currentVertex += 4;
 					}
-					if ((shownSides[blockIndex] & SIDES::WEST) == SIDES::WEST)
+					if (exposedFaces[index * 6 + TOP])
 					{
-						if (block->blockType == Block::LIQUID)
-						{
-							waterVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMinX, block->sideMinY, 3));
-							waterVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMaxX, block->sideMinY, 3));
-							waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMinX, block->sideMaxY, 3));
-							waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 3));
+						mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block.topMinX, block.topMinY}, 5 });
+						mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block.topMaxX, block.topMinY}, 5 });
+						mainVertices.push_back({ { x + 0, y + 1, z + 0 }, { block.topMinX, block.topMaxY}, 5 });
+						mainVertices.push_back({ { x + 1, y + 1, z + 0 }, { block.topMaxX, block.topMaxY}, 5 });
 
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							waterIndices.push_back(currentLiquidVertex + 1);
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 2);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							currentLiquidVertex += 4;
-						}
-						else
-						{
-							mainVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMinX, block->sideMinY, 3));
-							mainVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMaxX, block->sideMinY, 3));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMinX, block->sideMaxY, 3));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 3));
-
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 3);
-							mainIndices.push_back(currentVertex + 1);
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 2);
-							mainIndices.push_back(currentVertex + 3);
-							currentVertex += 4;
-						}
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 3);
+						mainIndices.push_back(currentVertex + 1);
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 2);
+						mainIndices.push_back(currentVertex + 3);
+						currentVertex += 4;
 					}
-					if ((shownSides[blockIndex] & SIDES::BOTTOM) == SIDES::BOTTOM)
+					if (exposedFaces[index * 6 + BOTTOM])
 					{
-						if (block->blockType == Block::LIQUID)
-						{
-							waterVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->bottomMinX, block->bottomMinY, 4));
-							waterVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->bottomMaxX, block->bottomMinY, 4));
-							waterVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->bottomMinX, block->bottomMaxY, 4));
-							waterVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->bottomMaxX, block->bottomMaxY, 4));
+						mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block.bottomMinX, block.bottomMinY}, 4 });
+						mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block.bottomMaxX, block.bottomMinY}, 4 });
+						mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block.bottomMinX, block.bottomMaxY}, 4 });
+						mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block.bottomMaxX, block.bottomMaxY}, 4 });
 
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							waterIndices.push_back(currentLiquidVertex + 1);
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 2);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							currentLiquidVertex += 4;
-						}
-						else
-						{
-							mainVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->bottomMinX, block->bottomMinY, 4));
-							mainVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->bottomMaxX, block->bottomMinY, 4));
-							mainVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->bottomMinX, block->bottomMaxY, 4));
-							mainVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->bottomMaxX, block->bottomMaxY, 4));
-
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 3);
-							mainIndices.push_back(currentVertex + 1);
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 2);
-							mainIndices.push_back(currentVertex + 3);
-							currentVertex += 4;
-						}
-					}
-					if ((shownSides[blockIndex] & SIDES::TOP) == SIDES::TOP)
-					{
-						if (block->blockType == Block::LIQUID)
-						{
-							//waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->topMinX, block->topMinY, 5));
-							//waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->topMaxX, block->topMinY, 5));
-							//waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->topMinX, block->topMaxY, 5));
-							//waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->topMaxX, block->topMaxY, 5));
-							//
-							//waterIndices.push_back(currentLiquidVertex + 0);
-							//waterIndices.push_back(currentLiquidVertex + 3);
-							//waterIndices.push_back(currentLiquidVertex + 1);
-							//waterIndices.push_back(currentLiquidVertex + 0);
-							//waterIndices.push_back(currentLiquidVertex + 2);
-							//waterIndices.push_back(currentLiquidVertex + 3);
-							//currentLiquidVertex += 4;
-
-							waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->topMinX, block->topMinY, 5));
-							waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->topMaxX, block->topMinY, 5));
-							waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->topMinX, block->topMaxY, 5));
-							waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->topMaxX, block->topMaxY, 5));
-
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							waterIndices.push_back(currentLiquidVertex + 1);
-							waterIndices.push_back(currentLiquidVertex + 0);
-							waterIndices.push_back(currentLiquidVertex + 2);
-							waterIndices.push_back(currentLiquidVertex + 3);
-							currentLiquidVertex += 4;
-						}
-						else
-						{
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->topMinX, block->topMinY, 5));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->topMaxX, block->topMinY, 5));
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->topMinX, block->topMaxY, 5));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->topMaxX, block->topMaxY, 5));
-
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 3);
-							mainIndices.push_back(currentVertex + 1);
-							mainIndices.push_back(currentVertex + 0);
-							mainIndices.push_back(currentVertex + 2);
-							mainIndices.push_back(currentVertex + 3);
-							currentVertex += 4;
-						}
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 3);
+						mainIndices.push_back(currentVertex + 1);
+						mainIndices.push_back(currentVertex + 0);
+						mainIndices.push_back(currentVertex + 2);
+						mainIndices.push_back(currentVertex + 3);
+						currentVertex += 4;
 					}
 				}
 			}
 		}
-
-		delete[] shownSides;
 	}
-	else
+	else if (true)
 	{
 		//mainVertices.reserve(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH * 4 * 6);
 		//mainIndices.reserve(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH * 6 * 6);
@@ -487,10 +245,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 
 					if (block->blockType == Block::BILLBOARD)
 					{
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 0, z + .85355f, block->sideMinX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 0, z + .14645f, block->sideMaxX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 1, z + .85355f, block->sideMinX, block->sideMaxY));
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 1, z + .14645f, block->sideMaxX, block->sideMaxY));
+						billboardVertices.push_back({ { x + .85355f, y + 0, z + .85355f }, { block->sideMinX, block->sideMinY } });
+						billboardVertices.push_back({ { x + .14645f, y + 0, z + .14645f }, { block->sideMaxX, block->sideMinY } });
+						billboardVertices.push_back({ { x + .85355f, y + 1, z + .85355f }, { block->sideMinX, block->sideMaxY } });
+						billboardVertices.push_back({ { x + .14645f, y + 1, z + .14645f }, { block->sideMaxX, block->sideMaxY } });
 
 						billboardIndices.push_back(currentBillboardVertex + 0);
 						billboardIndices.push_back(currentBillboardVertex + 3);
@@ -500,10 +258,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						billboardIndices.push_back(currentBillboardVertex + 3);
 						currentBillboardVertex += 4;
 
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 0, z + .85355f, block->sideMinX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 0, z + .14645f, block->sideMaxX, block->sideMinY));
-						billboardVertices.push_back(BillboardVertex(x + .14645f, y + 1, z + .85355f, block->sideMinX, block->sideMaxY));
-						billboardVertices.push_back(BillboardVertex(x + .85355f, y + 1, z + .14645f, block->sideMaxX, block->sideMaxY));
+						billboardVertices.push_back({ { x + .14645f, y + 0, z + .85355f }, { block->sideMinX, block->sideMinY } });
+						billboardVertices.push_back({ { x + .85355f, y + 0, z + .14645f }, { block->sideMaxX, block->sideMinY } });
+						billboardVertices.push_back({ { x + .14645f, y + 1, z + .85355f }, { block->sideMinX, block->sideMaxY } });
+						billboardVertices.push_back({ { x + .85355f, y + 1, z + .14645f }, { block->sideMaxX, block->sideMaxY } });
 
 						billboardIndices.push_back(currentBillboardVertex + 0);
 						billboardIndices.push_back(currentBillboardVertex + 3);
@@ -525,7 +283,7 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						}
 						else
 						{
-							if (front && front->chunkData.generated)
+							if (frontGenerated)
 								northBlock = front->chunkData.GetBlock(x, y, CHUNK_WIDTH - 1);
 							else
 								northBlock = Blocks::AIR;
@@ -540,10 +298,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						{
 							if (block->blockType == Block::LIQUID)
 							{
-								waterVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMinX, block->sideMinY, 0));
-								waterVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMaxX, block->sideMinY, 0));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMinX, block->sideMaxY, 0));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 0));
+								waterVertices.push_back({ { x + 1, y + 0, z + 0 }, { block->sideMinX, block->sideMinY}, 0 });
+								waterVertices.push_back({ { x + 0, y + 0, z + 0 }, { block->sideMaxX, block->sideMinY}, 0 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->sideMinX, block->sideMaxY}, 0 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->sideMaxX, block->sideMaxY}, 0 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -555,10 +313,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 							}
 							else
 							{
-								mainVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMinX, block->sideMinY, 0));
-								mainVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMaxX, block->sideMinY, 0));
-								mainVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMinX, block->sideMaxY, 0));
-								mainVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 0));
+								mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block->sideMinX, block->sideMinY}, 0 });
+								mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block->sideMaxX, block->sideMinY}, 0 });
+								mainVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->sideMinX, block->sideMaxY}, 0 });
+								mainVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->sideMaxX, block->sideMaxY}, 0 });
 
 								mainIndices.push_back(currentVertex + 0);
 								mainIndices.push_back(currentVertex + 3);
@@ -580,7 +338,7 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						}
 						else
 						{
-							if (back && back->chunkData.generated)
+							if (backGenerated)
 								southBlock = back->chunkData.GetBlock(x, y, 0);
 							else
 								southBlock = Blocks::AIR;
@@ -595,10 +353,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						{
 							if (block->blockType == Block::LIQUID)
 							{
-								waterVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMinX, block->sideMinY, 1));
-								waterVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMaxX, block->sideMinY, 1));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMinX, block->sideMaxY, 1));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 1));
+								waterVertices.push_back({ { x + 0, y + 0, z + 1 }, { block->sideMinX, block->sideMinY}, 1 });
+								waterVertices.push_back({ { x + 1, y + 0, z + 1 }, { block->sideMaxX, block->sideMinY}, 1 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->sideMinX, block->sideMaxY}, 1 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->sideMaxX, block->sideMaxY}, 1 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -610,10 +368,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 							}
 							else
 							{
-								mainVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMinX, block->sideMinY, 1));
-								mainVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMaxX, block->sideMinY, 1));
-								mainVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMinX, block->sideMaxY, 1));
-								mainVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 1));
+								mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block->sideMinX, block->sideMinY}, 1 });
+								mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block->sideMaxX, block->sideMinY}, 1 });
+								mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->sideMinX, block->sideMaxY}, 1 });
+								mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->sideMaxX, block->sideMaxY}, 1 });
 
 								mainIndices.push_back(currentVertex + 0);
 								mainIndices.push_back(currentVertex + 3);
@@ -635,7 +393,7 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						}
 						else
 						{
-							if (left && left->chunkData.generated)
+							if (leftGenerated)
 								westBlock = left->chunkData.GetBlock(CHUNK_WIDTH - 1, y, z);
 							else
 								westBlock = Blocks::AIR;
@@ -650,10 +408,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						{
 							if (block->blockType == Block::LIQUID)
 							{
-								waterVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMinX, block->sideMinY, 2));
-								waterVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMaxX, block->sideMinY, 2));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMinX, block->sideMaxY, 2));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 2));
+								waterVertices.push_back({ { x + 0, y + 0, z + 0 }, { block->sideMinX, block->sideMinY}, 2 });
+								waterVertices.push_back({ { x + 0, y + 0, z + 1 }, { block->sideMaxX, block->sideMinY}, 2 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->sideMinX, block->sideMaxY}, 2 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->sideMaxX, block->sideMaxY}, 2 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -665,10 +423,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 							}
 							else
 							{
-								mainVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->sideMinX, block->sideMinY, 2));
-								mainVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->sideMaxX, block->sideMinY, 2));
-								mainVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->sideMinX, block->sideMaxY, 2));
-								mainVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->sideMaxX, block->sideMaxY, 2));
+								mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block->sideMinX, block->sideMinY}, 2 });
+								mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block->sideMaxX, block->sideMinY}, 2 });
+								mainVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->sideMinX, block->sideMaxY}, 2 });
+								mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->sideMaxX, block->sideMaxY}, 2 });
 
 								mainIndices.push_back(currentVertex + 0);
 								mainIndices.push_back(currentVertex + 3);
@@ -690,7 +448,7 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						}
 						else
 						{
-							if (right && right->chunkData.generated)
+							if (rightGenerated)
 								eastBlock = right->chunkData.GetBlock(0, y, z);
 							else
 								eastBlock = Blocks::AIR;
@@ -705,10 +463,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						{
 							if (block->blockType == Block::LIQUID)
 							{
-								waterVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMinX, block->sideMinY, 3));
-								waterVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMaxX, block->sideMinY, 3));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMinX, block->sideMaxY, 3));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 3));
+								waterVertices.push_back({ { x + 1, y + 0, z + 1 }, { block->sideMinX, block->sideMinY}, 3 });
+								waterVertices.push_back({ { x + 1, y + 0, z + 0 }, { block->sideMaxX, block->sideMinY}, 3 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->sideMinX, block->sideMaxY}, 3 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->sideMaxX, block->sideMaxY}, 3 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -720,10 +478,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 							}
 							else
 							{
-								mainVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->sideMinX, block->sideMinY, 3));
-								mainVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->sideMaxX, block->sideMinY, 3));
-								mainVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->sideMinX, block->sideMaxY, 3));
-								mainVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->sideMaxX, block->sideMaxY, 3));
+								mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block->sideMinX, block->sideMinY}, 3 });
+								mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block->sideMaxX, block->sideMinY}, 3 });
+								mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->sideMinX, block->sideMaxY}, 3 });
+								mainVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->sideMaxX, block->sideMaxY}, 3 });
 
 								mainIndices.push_back(currentVertex + 0);
 								mainIndices.push_back(currentVertex + 3);
@@ -758,10 +516,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						{
 							if (block->blockType == Block::LIQUID)
 							{
-								waterVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->bottomMinX, block->bottomMinY, 4));
-								waterVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->bottomMaxX, block->bottomMinY, 4));
-								waterVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->bottomMinX, block->bottomMaxY, 4));
-								waterVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->bottomMaxX, block->bottomMaxY, 4));
+								waterVertices.push_back({ { x + 1, y + 0, z + 1 }, { block->bottomMinX, block->bottomMinY}, 4 });
+								waterVertices.push_back({ { x + 0, y + 0, z + 1 }, { block->bottomMaxX, block->bottomMinY}, 4 });
+								waterVertices.push_back({ { x + 1, y + 0, z + 0 }, { block->bottomMinX, block->bottomMaxY}, 4 });
+								waterVertices.push_back({ { x + 0, y + 0, z + 0 }, { block->bottomMaxX, block->bottomMaxY}, 4 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -773,10 +531,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 							}
 							else
 							{
-								mainVertices.push_back(Vertex(x + 1, y + 0, z + 1, block->bottomMinX, block->bottomMinY, 4));
-								mainVertices.push_back(Vertex(x + 0, y + 0, z + 1, block->bottomMaxX, block->bottomMinY, 4));
-								mainVertices.push_back(Vertex(x + 1, y + 0, z + 0, block->bottomMinX, block->bottomMaxY, 4));
-								mainVertices.push_back(Vertex(x + 0, y + 0, z + 0, block->bottomMaxX, block->bottomMaxY, 4));
+								mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block->bottomMinX, block->bottomMinY}, 4 });
+								mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block->bottomMaxX, block->bottomMinY}, 4 });
+								mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block->bottomMinX, block->bottomMaxY}, 4 });
+								mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block->bottomMaxX, block->bottomMaxY}, 4 });
 
 								mainIndices.push_back(currentVertex + 0);
 								mainIndices.push_back(currentVertex + 3);
@@ -808,10 +566,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 						{
 							if (topBlockType->blockType != Block::LIQUID)
 							{
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->topMinX, block->topMinY, 5));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->topMaxX, block->topMinY, 5));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->topMinX, block->topMaxY, 5));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->topMaxX, block->topMaxY, 5));
+								waterVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->topMinX, block->topMinY}, 5 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->topMaxX, block->topMinY}, 5 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->topMinX, block->topMaxY}, 5 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->topMaxX, block->topMaxY}, 5 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -821,10 +579,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 								waterIndices.push_back(currentLiquidVertex + 3);
 								currentLiquidVertex += 4;
 
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->topMinX, block->topMinY, 5));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->topMaxX, block->topMinY, 5));
-								waterVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->topMinX, block->topMaxY, 5));
-								waterVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->topMaxX, block->topMaxY, 5));
+								waterVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->topMinX, block->topMinY}, 5 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->topMaxX, block->topMinY}, 5 });
+								waterVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->topMinX, block->topMaxY}, 5 });
+								waterVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->topMaxX, block->topMaxY}, 5 });
 
 								waterIndices.push_back(currentLiquidVertex + 0);
 								waterIndices.push_back(currentLiquidVertex + 3);
@@ -840,10 +598,10 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 							|| topBlockType->blockType == Block::BILLBOARD
 							|| topBlockType->blockType == Block::LIQUID)
 						{
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 1, block->topMinX, block->topMinY, 5));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 1, block->topMaxX, block->topMinY, 5));
-							mainVertices.push_back(Vertex(x + 0, y + 1, z + 0, block->topMinX, block->topMaxY, 5));
-							mainVertices.push_back(Vertex(x + 1, y + 1, z + 0, block->topMaxX, block->topMaxY, 5));
+							mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block->topMinX, block->topMinY}, 5 });
+							mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block->topMaxX, block->topMinY}, 5 });
+							mainVertices.push_back({ { x + 0, y + 1, z + 0 }, { block->topMinX, block->topMaxY}, 5 });
+							mainVertices.push_back({ { x + 1, y + 1, z + 0 }, { block->topMaxX, block->topMaxY}, 5 });
 
 							mainIndices.push_back(currentVertex + 0);
 							mainIndices.push_back(currentVertex + 3);
@@ -862,6 +620,7 @@ void Chunk::GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* ba
 	//std::cout << "Finished generating in thread: " << std::this_thread::get_id() << '\n';
 
 	//std::cout << "Generated: " << generated << '\n';
+	ready = false;
 	generated = true;
 }
 
@@ -869,11 +628,12 @@ void Chunk::PrepareRender()
 {
 	if (!ready && generated && !markedForDelete)
 	{
-		opaqueTri = nullptr;
-		opaqueEle = nullptr;
 		if (mainIndices.size())
 		{
 			Planet::DrawingData& data = Planet::planet->opaqueDrawingData;
+
+			data.vbo.RemoveData(opaqueTri);
+			data.ebo.RemoveData(opaqueEle);
 
 			opaqueTri = data.vbo.AddData(mainVertices.size() * sizeof(Vertex), mainVertices.data());
 			opaqueEle = data.ebo.AddData(mainIndices.size() * sizeof(uint32_t), mainIndices.data());
@@ -884,28 +644,32 @@ void Chunk::PrepareRender()
 			mainIndices.shrink_to_fit();
 		}
 
-		billboardTri = nullptr;
-		billboardEle = nullptr;
 		if (billboardIndices.size())
 		{
 			Planet::DrawingData& data = Planet::planet->billboardDrawingData;
 
+			data.vbo.RemoveData(billboardTri);
+			data.ebo.RemoveData(billboardEle);
+
 			billboardTri = data.vbo.AddData(billboardVertices.size() * sizeof(BillboardVertex), billboardVertices.data());
 			billboardEle = data.ebo.AddData(billboardIndices.size() * sizeof(uint32_t), billboardIndices.data());
+
 			billboardVertices.clear();
 			billboardVertices.shrink_to_fit();
 			billboardIndices.clear();
 			billboardIndices.shrink_to_fit();
 		}
 
-		waterTri = nullptr;
-		waterEle = nullptr;
 		if (waterIndices.size())
 		{
 			Planet::DrawingData& data = Planet::planet->transparentDrawingData;
 
+			data.vbo.RemoveData(waterTri);
+			data.ebo.RemoveData(waterEle);
+
 			waterTri = data.vbo.AddData(waterVertices.size() * sizeof(Vertex), waterVertices.data());
 			waterEle = data.ebo.AddData(waterIndices.size() * sizeof(uint32_t), waterIndices.data());
+
 			waterVertices.clear();
 			waterVertices.shrink_to_fit();
 			waterIndices.clear();
@@ -982,7 +746,7 @@ void Chunk::UpdateChunk()
 {
 	ZoneScoped;
 
-	Planet::planet->AddChunkToGenerate(chunkPos);
+	Planet::planet->AddChunkToGenerate(shared_from_this());
 
 	//GenerateChunkMesh();
 

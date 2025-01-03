@@ -6,7 +6,7 @@
 namespace ChunkRenderer
 {
 	void RenderOpaque(
-		std::unordered_map<ChunkPos, Chunk*, ChunkPosHash>& chunks,
+		std::unordered_map<ChunkPos, Chunk::Ptr, ChunkPosHash>& chunks,
 		Shader* solidShader, Shader* billboardShader,
 		uint32_t& out_chunksLoading, uint32_t& out_chunksRendered)
 	{
@@ -17,17 +17,13 @@ namespace ChunkRenderer
 
 		ScopedEnable _(GL_BLEND, false);
 
-		if (Planet::planet->chunkMeshMutex.try_lock())
+		for (auto& [chunkPos, chunk] : chunks)
 		{
-			for (auto& [chunkPos, chunk] : chunks)
+			if (!chunk->ready)
 			{
-				if (!chunk->ready)
-				{
-					out_chunksLoading++;
-					chunk->PrepareRender();
-				}
+				out_chunksLoading++;
+				chunk->PrepareRender();
 			}
-			Planet::planet->chunkMeshMutex.unlock();
 		}
 
 		{
@@ -44,17 +40,17 @@ namespace ChunkRenderer
 			BufferBinder _5(data.ibo);
 
 			GLint modelLoc = solidShader->GetUniformLocation("models");
-			constexpr uint32_t MAX_DRAW_COMMANDS = 128;
+			constexpr uint32_t MAX_DRAW_COMMANDS = 512;
 			DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
-			glm::mat4x4 matrices[MAX_DRAW_COMMANDS];
+			glm::vec3 matrices[MAX_DRAW_COMMANDS];
 			int drawCount = 0;
 			for (auto& [chunkPos, chunk] : chunks)
 			{
 				if (!chunk->ready || !chunk->opaqueEle)
 					continue;
 
-				matrices[drawCount] = chunk->modelMatrix;
-				commands[drawCount].count = chunk->opaqueEle->size;
+				matrices[drawCount] = chunk->worldPos;
+				commands[drawCount].count = chunk->opaqueEle->size / sizeof(uint32_t);
 				commands[drawCount].instanceCount = 1;
 				commands[drawCount].firstIndex = chunk->opaqueEle->offset / sizeof(uint32_t);
 				commands[drawCount].baseVertex = chunk->opaqueTri->offset / sizeof(Vertex);
@@ -65,7 +61,7 @@ namespace ChunkRenderer
 
 				if (drawCount == MAX_DRAW_COMMANDS)
 				{
-					_2.setMat4x4s(modelLoc, drawCount, matrices);
+					_2.setFloat3s(modelLoc, drawCount, matrices);
 					data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 					glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 					drawCount = 0;
@@ -74,7 +70,7 @@ namespace ChunkRenderer
 
 			if (drawCount != 0)
 			{
-				_2.setMat4x4s(modelLoc, drawCount, matrices);
+				_2.setFloat3s(modelLoc, drawCount, matrices);
 				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 			}
@@ -94,17 +90,17 @@ namespace ChunkRenderer
 			BufferBinder _5(data.ibo);
 
 			GLint modelLoc = billboardShader->GetUniformLocation("models");
-			constexpr uint32_t MAX_DRAW_COMMANDS = 128;
+			constexpr uint32_t MAX_DRAW_COMMANDS = 512;
 			DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
-			glm::mat4x4 matrices[MAX_DRAW_COMMANDS];
+			glm::vec3 matrices[MAX_DRAW_COMMANDS];
 			int drawCount = 0;
 			for (auto& [chunkPos, chunk] : chunks)
 			{
 				if (!chunk->ready || !chunk->billboardEle)
 					continue;
 
-				matrices[drawCount] = chunk->modelMatrix;
-				commands[drawCount].count = chunk->billboardEle->size;
+				matrices[drawCount] = chunk->worldPos;
+				commands[drawCount].count = chunk->billboardEle->size / sizeof(uint32_t);
 				commands[drawCount].instanceCount = 1;
 				commands[drawCount].firstIndex = chunk->billboardEle->offset / sizeof(uint32_t);
 				commands[drawCount].baseVertex = chunk->billboardTri->offset / sizeof(BillboardVertex);
@@ -114,7 +110,7 @@ namespace ChunkRenderer
 
 				if (drawCount == MAX_DRAW_COMMANDS)
 				{
-					_2.setMat4x4s(modelLoc, drawCount, matrices);
+					_2.setFloat3s(modelLoc, drawCount, matrices);
 					data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 					glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 					drawCount = 0;
@@ -123,7 +119,7 @@ namespace ChunkRenderer
 
 			if (drawCount != 0)
 			{
-				_2.setMat4x4s(modelLoc, drawCount, matrices);
+				_2.setFloat3s(modelLoc, drawCount, matrices);
 				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 			}
@@ -131,7 +127,7 @@ namespace ChunkRenderer
 	}
 
 	void RenderTransparent(
-		std::unordered_map<ChunkPos, Chunk*, ChunkPosHash>& chunks,
+		std::unordered_map<ChunkPos, Chunk::Ptr, ChunkPosHash>& chunks,
 		Shader* waterShader)
 	{
 		ZoneScoped;
@@ -148,17 +144,17 @@ namespace ChunkRenderer
 		BufferBinder _5(data.ibo);
 
 		GLint modelLoc = waterShader->GetUniformLocation("models");
-		constexpr uint32_t MAX_DRAW_COMMANDS = 128;
+		constexpr uint32_t MAX_DRAW_COMMANDS = 512;
 		DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
-		glm::mat4x4 matrices[MAX_DRAW_COMMANDS];
+		glm::vec3 matrices[MAX_DRAW_COMMANDS];
 		int drawCount = 0;
 		for (auto& [chunkPos, chunk] : chunks)
 		{
 			if (!chunk->ready || !chunk->waterEle)
 				continue;
 
-			matrices[drawCount] = chunk->modelMatrix;
-			commands[drawCount].count = chunk->waterEle->size;
+			matrices[drawCount] = chunk->worldPos;
+			commands[drawCount].count = chunk->waterEle->size / sizeof(uint32_t);
 			commands[drawCount].instanceCount = 1;
 			commands[drawCount].firstIndex = chunk->waterEle->offset / sizeof(uint32_t);
 			commands[drawCount].baseVertex = chunk->waterTri->offset / sizeof(Vertex);
@@ -168,7 +164,7 @@ namespace ChunkRenderer
 
 			if (drawCount == MAX_DRAW_COMMANDS)
 			{
-				_.setMat4x4s(modelLoc, drawCount, matrices);
+				_.setFloat3s(modelLoc, drawCount, matrices);
 				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 				drawCount = 0;
@@ -177,7 +173,7 @@ namespace ChunkRenderer
 
 		if (drawCount != 0)
 		{
-			_.setMat4x4s(modelLoc, drawCount, matrices);
+			_.setFloat3s(modelLoc, drawCount, matrices);
 			data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 			glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 		}

@@ -106,6 +106,7 @@ public:
 	struct Node
 	{
 		GLint offset, size;
+		bool used;
 	};
 
 	GeoBuffer(GLenum target)
@@ -115,28 +116,42 @@ public:
 	Node* AddData(size_t size, void* data)
 	{
 		assert(m_size <= UINT32_MAX && "Added too much data to buffer, overflow.");
+		
 		while (m_size + size > m_allocated)
 		{
 			Resize(m_size + m_size / 2);
 		}
 
+		for (auto itr = m_nodes.begin(); itr != m_nodes.end(); itr++)
+		{
+			if (itr->used || itr->size < size)
+				continue;
+
+			glNamedBufferSubData(m_id, itr->offset, size, data);
+			itr->size = size;
+			itr->used = true;
+			return &(*itr);
+		}
+
 		glNamedBufferSubData(m_id, m_size, size, data);
-		Node* node = &m_nodes.emplace_back(Node{ (GLint)m_size, (GLint)size });
+		Node* node = &m_nodes.emplace_back(Node{ (GLint)m_size, (GLint)size, true });
 		m_size += size;
 		return node;
 	}
 
 	void RemoveData(Node* node)
 	{
-		for (auto itr = m_nodes.begin(); itr != m_nodes.end();)
-		{
-			if (itr->offset == node->offset)
-			{
-				auto itr2 = itr;
-				itr++;
-				m_nodes.erase(itr2);
-			}
-		}
+		if (!node)
+			return;
+		node->used = false;
+
+		//for (auto itr = m_nodes.begin(); itr != m_nodes.end(); itr++)
+		//{
+		//	if (itr->offset == node->offset)
+		//	{
+		//		itr->used = false;
+		//	}
+		//}
 	}
 
 	std::list<Node> m_nodes;

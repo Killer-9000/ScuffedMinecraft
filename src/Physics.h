@@ -9,7 +9,7 @@ namespace Physics
 	{
 		bool hit;
 		glm::vec3 hitPos;
-		Chunk* chunk;
+		Chunk::Ptr chunk;
 		int blockX;
 		int blockY;
 		int blockZ;
@@ -17,7 +17,7 @@ namespace Physics
 		int localBlockY;
 		int localBlockZ;
 			
-		RaycastResult(bool hit, glm::vec3 hitPos, Chunk* chunk, int blockX, int blockY, int blockZ, int localBlockX, int localBlockY, int localBlockZ)
+		RaycastResult(bool hit, glm::vec3 hitPos, Chunk::Ptr chunk, int blockX, int blockY, int blockZ, int localBlockX, int localBlockY, int localBlockZ)
 			: hit(hit), hitPos(hitPos), chunk(chunk), blockX(blockX), blockY(blockY), blockZ(blockZ), localBlockX(localBlockX), localBlockY(localBlockY), localBlockZ(localBlockZ)
 		{
 

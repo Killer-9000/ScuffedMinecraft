@@ -27,7 +27,7 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 	: solidShader(solidShader), waterShader(waterShader), billboardShader(billboardShader)
 {
 #if !SYNCRONOUS_GENERATION
-	uint32_t threads = 8;// std::thread::hardware_concurrency();
+	uint32_t threads = 20;// std::thread::hardware_concurrency();
 	//threads /= 2;
 	for (int i = 0; i < threads; i++)
 		generatorThreads.emplace_back(&Planet::ChunkThreadGenerator, this, i);
@@ -42,8 +42,8 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 		data.vao.BindVertexBuffer(0, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(1, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(2, data.vbo, 0, sizeof(Vertex));
-		data.vao.SetAttribPointer(0, 3, GL_BYTE, GL_FALSE, offsetof(Vertex, posX));
-		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(Vertex, texGridX));
+		data.vao.SetAttribPointer(0, 3, GL_BYTE, GL_FALSE, offsetof(Vertex, pos));
+		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(Vertex, texGrid));
 		data.vao.SetAttribPointerI(2, 1, GL_BYTE, offsetof(Vertex, direction));
 	}
 
@@ -56,8 +56,8 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 		data.vao.BindVertexBuffer(0, data.vbo, 0, sizeof(BillboardVertex));
 		data.vao.BindVertexBuffer(1, data.vbo, 0, sizeof(BillboardVertex));
 		data.vao.BindVertexBuffer(2, data.vbo, 0, sizeof(BillboardVertex));
-		data.vao.SetAttribPointer(0, 3, GL_FLOAT, GL_FALSE, offsetof(BillboardVertex, posX));
-		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(BillboardVertex, texGridX));
+		data.vao.SetAttribPointer(0, 3, GL_HALF_FLOAT, GL_FALSE, offsetof(BillboardVertex, pos));
+		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(BillboardVertex, texGrid));
 		data.vao.SetAttribPointerI(2, 1, GL_BYTE, offsetof(BillboardVertex, direction));
 	}
 
@@ -70,8 +70,8 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 		data.vao.BindVertexBuffer(0, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(1, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(2, data.vbo, 0, sizeof(Vertex));
-		data.vao.SetAttribPointer(0, 3, GL_BYTE, GL_FALSE, offsetof(Vertex, posX));
-		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(Vertex, texGridX));
+		data.vao.SetAttribPointer(0, 3, GL_BYTE, GL_FALSE, offsetof(Vertex, pos));
+		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(Vertex, texGrid));
 		data.vao.SetAttribPointerI(2, 1, GL_BYTE, offsetof(Vertex, direction));
 	}
 }
@@ -92,11 +92,14 @@ void Planet::Update(glm::vec3 cameraPos)
 	camChunkY = cameraPos.y < 0 ? floor(cameraPos.y / CHUNK_HEIGHT) : cameraPos.y / CHUNK_HEIGHT;
 	camChunkZ = cameraPos.z < 0 ? floor(cameraPos.z / CHUNK_WIDTH) : cameraPos.z / CHUNK_WIDTH;
 
-	//chunkMutex.lock();
-	numChunks = chunks.size();
-	ChunkRenderer::RenderOpaque(chunks, solidShader, billboardShader, chunksLoading, numChunksRendered);
-	ChunkRenderer::RenderTransparent(chunks, waterShader);
-	//chunkMutex.unlock();
+	{
+		//ScopedPolygonMode _(GL_LINE);
+		//glLineWidth(3);
+
+		numChunks = chunks.size();
+		ChunkRenderer::RenderOpaque(chunks, solidShader, billboardShader, chunksLoading, numChunksRendered);
+		ChunkRenderer::RenderTransparent(chunks, waterShader);
+	}
 
 	// Check if camera moved to new chunk
 	if (camChunkX != lastCamX || camChunkY != lastCamY || camChunkZ != lastCamZ)
@@ -107,20 +110,9 @@ void Planet::Update(glm::vec3 cameraPos)
 		lastCamY = camChunkY;
 		lastCamZ = camChunkZ;
 
-		//chunkMutex.lock();
-		//chunkQueue = {};
 		if (loadChunks)
 		{
 			ZoneScopedN("Add new chunks");
-			//if (chunks.find({ camChunkX, 0, camChunkZ }) == chunks.end())
-			//	AddChunkToGenerate({ camChunkX, 0, camChunkZ });
-
-			// 33333
-			// 32223
-			// 32123
-			// 32223
-			// 33333
-
 			// Starting from the center
 			for (int i = 0; i < renderDistance; i++)
 			{
@@ -148,35 +140,20 @@ void Planet::Update(glm::vec3 cameraPos)
 			for (auto it = chunks.begin(); it != chunks.end(); )
 			{
 				ChunkPos pos = it->first;
-				Chunk* chunk = it->second;
+				Chunk::Ptr chunk = it->second;
 				it++;
 
 				float dist = sqrt(pow(abs(pos.x - camChunkX), 2) + pow(abs(pos.z - camChunkZ), 2));
 
 				// Out of range delete chunk
-				if (chunk->ready && dist > renderDistance)
+				if (chunk->ready && dist > renderDistance && chunk->ready)
 				{
 					chunk->markedForDelete = true;
+					chunks.erase(pos);
 				}
-			}
-			if (chunkDeletionMutex.try_lock())
-			{
-				for (auto it = chunks.begin(); it != chunks.end(); )
-				{
-					ChunkPos pos = it->first;
-					Chunk* chunk = it->second;
-					it++;
-					if (chunk->markedForDelete)
-					{
-						delete chunk;
-						chunks.erase(pos);
-					}
-				}
-				chunkDeletionMutex.unlock();
 			}
 		}
 	}
-
 
 #if SYNCRONOUS_GENERATION
 	ChunkThreadGenerator(-1);
@@ -196,42 +173,27 @@ void Planet::ChunkThreadGenerator(int threadId)
 	while (!shouldEnd)
 	{
 #endif
-		chunkDeletionMutex.lock();
-
-		Chunk* chunk;
+		Chunk::Ptr chunk;
 		if (generatorChunks.try_dequeue(chunk))
 		{
-			if (!chunk || chunk->markedForDelete)
-				continue;
+			ZoneScoped;
 
-			chunkDeletionMutex.unlock();
+			std::array<Chunk::Ptr, 4> surroundingChunks;
 
-			// Really just the initial generation of chunk
-			// 
-			// Generate blocks using noisemaps
-			if (!chunk->chunkData.generated)
 			{
-				chunkBlockMutex.lock();
-				chunk->chunkData.blockIDs = new uint16_t[CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH];
-				WorldGen::GenerateChunkData(chunk->chunkPos, &chunk->chunkData);
-				chunk->edgeUpdate = true;
-				chunkBlockMutex.unlock();
-			}
+				ZoneScopedN("Checks");
+				if (!chunk || chunk->markedForDelete)
+				{
+					continue;
+				}
+				if (!chunk->generatorMutex.try_lock())
+				{
+					continue;
+				}
 
-			//if (!chunk->generatingMutex.try_lock())
-			//{
-			//	chunk->generated = false;
-			//	generatorChunks.enqueue(chunk);
-			//	continue;
-			//}
-
-
-			// Convert blocks to triangle mesh
-			if (!chunk->generated)
-			{
-				auto getChunk = [this](Chunk* base, int x, int y, int z)->Chunk*
+				auto getChunk = [this](Chunk::Ptr base, int x, int y, int z)->Chunk::Ptr
 					{
-						auto itr = chunks.find({x + base->chunkPos.x, 0, z + base->chunkPos.z});
+						auto itr = chunks.find({ x + base->chunkPos.x, 0, z + base->chunkPos.z });
 						if (itr == chunks.end())
 							return nullptr;
 						if (!itr->second->chunkData.generated)
@@ -241,94 +203,84 @@ void Planet::ChunkThreadGenerator(int threadId)
 						return itr->second;
 					};
 
-				std::array<Chunk*, 12> surroundingChunks =
+				surroundingChunks =
 				{
-					//   A
-					//  629
-					// 40 17
-					//  538
-					//   B
-
 					getChunk(chunk, -1, 0,  0), // left
 					getChunk(chunk, 1, 0,  0),  // right
 					getChunk(chunk, 0, 0, 1),   // front
 					getChunk(chunk, 0, 0, -1),  // back
-
-					getChunk(chunk, -2, 0,  0), // left left
-					getChunk(chunk, -1, 0, -1), // back left
-					getChunk(chunk, -1, 0,  1), // front left
-
-					getChunk(chunk, 2, 0,  0), // right right
-					getChunk(chunk, 1, 0, -1), // back right
-					getChunk(chunk, 1, 0,  1), // front right
-
-					getChunk(chunk, 0, 0, 2), // front front
-
-					getChunk(chunk, 0, 0, -2), // back back
 				};
 
-				chunkMeshMutex.lock();
-				chunkBlockMutex.lock_shared();
-				chunk->GenerateChunkMesh(surroundingChunks[0], surroundingChunks[1], surroundingChunks[2], surroundingChunks[3]);
-
-				//if (surroundingChunks[0] && chunk->edgeUpdate)
-				//	surroundingChunks[0]->GenerateChunkMesh(surroundingChunks[4], chunk, surroundingChunks[6], surroundingChunks[5]);
-
-				//if (surroundingChunks[1] && chunk->edgeUpdate)
-				//	surroundingChunks[1]->GenerateChunkMesh(chunk, surroundingChunks[7], surroundingChunks[9], surroundingChunks[8]);
-
-				//if (surroundingChunks[2] && chunk->edgeUpdate)
-				//	surroundingChunks[2]->GenerateChunkMesh(surroundingChunks[6], surroundingChunks[9], surroundingChunks[10], chunk);
-
-				//if (surroundingChunks[3] && chunk->edgeUpdate)
-				//	surroundingChunks[3]->GenerateChunkMesh(surroundingChunks[5], surroundingChunks[8], chunk, surroundingChunks[11]);
-
-				chunkBlockMutex.unlock_shared();
-				chunkMeshMutex.unlock();
-
-				//chunk->chunkData.Compress();
-
-				chunk->edgeUpdate = false;
+				if ((chunk->surroundedChunks[0] == (bool)surroundingChunks[0]
+					&& chunk->surroundedChunks[1] == (bool)surroundingChunks[1]
+					&& chunk->surroundedChunks[2] == (bool)surroundingChunks[2]
+					&& chunk->surroundedChunks[3] == (bool)surroundingChunks[3])
+					&& chunk->generated)
+				{
+					chunk->generatorMutex.unlock();
+					continue;
+				}
 			}
-			// Currently generating, so requeue.
+
+			// Really just the initial generation of chunk
+			// 
+			// Generate blocks using noisemaps
+			if (!chunk->chunkData.generated)
+			{
+				chunk->chunkData.blockIDs = new uint16_t[CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH];
+				WorldGen::GenerateChunkData(chunk->chunkPos, &chunk->chunkData);
+				chunk->edgeUpdate = true;
+			}
+
+			// Convert blocks to triangle mesh
+
+			bool firstTime = !chunk->generated;
+
+			chunk->surroundedChunks[0] = surroundingChunks[0] != nullptr;
+			chunk->surroundedChunks[1] = surroundingChunks[1] != nullptr;
+			chunk->surroundedChunks[2] = surroundingChunks[2] != nullptr;
+			chunk->surroundedChunks[3] = surroundingChunks[3] != nullptr;
+			//chunkMeshMutex.lock();
+			chunk->GenerateChunkMesh(surroundingChunks[0], surroundingChunks[1], surroundingChunks[2], surroundingChunks[3]);
+			//chunkMeshMutex.unlock();
+
+			if (chunk->edgeUpdate)
+			{
+				if (surroundingChunks[0])
+					AddChunkToGenerate(surroundingChunks[0]);
+				if (surroundingChunks[1])
+					AddChunkToGenerate(surroundingChunks[1]);
+				if (surroundingChunks[2])
+					AddChunkToGenerate(surroundingChunks[2]);
+				if (surroundingChunks[3])
+					AddChunkToGenerate(surroundingChunks[3]);
+			}
 			else
 			{
-				generatorChunks.enqueue(chunk);
+				if (surroundingChunks[0] && !surroundingChunks[0]->surroundedChunks[1])
+					AddChunkToGenerate(surroundingChunks[0]);
+				if (surroundingChunks[1] && !surroundingChunks[1]->surroundedChunks[0])
+					AddChunkToGenerate(surroundingChunks[1]);
+				if (surroundingChunks[2] && !surroundingChunks[2]->surroundedChunks[3])
+					AddChunkToGenerate(surroundingChunks[2]);
+				if (surroundingChunks[3] && !surroundingChunks[3]->surroundedChunks[2])
+					AddChunkToGenerate(surroundingChunks[3]);
 			}
 
-			//chunk->generatingMutex.unlock();
-
+			chunk->edgeUpdate = false;
+			chunk->generatorMutex.unlock();
 		}
-		else
-			chunkDeletionMutex.unlock();
-		//// Set top data
-		//if (!chunk->upData->generated)
-		//	WorldGen::GenerateChunkData(ChunkPos{ chunk->chunkPos.x, chunk->chunkPos.y + 1, chunk->chunkPos.z }, chunk->upData);
-		//
-		//// Set bottom data
-		//if (!chunk->downData->generated)
-		//	WorldGen::GenerateChunkData(ChunkPos{ chunk->chunkPos.x, chunk->chunkPos.y - 1, chunk->chunkPos.z }, chunk->downData);
-		//
-		//// Set north data
-		//if (!chunk->northData->generated)
-		//	WorldGen::GenerateChunkData(ChunkPos{ chunk->chunkPos.x, chunk->chunkPos.y, chunk->chunkPos.z - 1 }, chunk->northData);
-		//
-		//// Set south data
-		//if (!chunk->southData->generated)
-		//	WorldGen::GenerateChunkData(ChunkPos{ chunk->chunkPos.x, chunk->chunkPos.y, chunk->chunkPos.z + 1 }, chunk->southData);
-		//
-		//// Set east data
-		//if (!chunk->eastData->generated)
-		//	WorldGen::GenerateChunkData(ChunkPos{ chunk->chunkPos.x + 1, chunk->chunkPos.y, chunk->chunkPos.z }, chunk->eastData);
-		//
-		//// Set west data
-		//if (!chunk->westData->generated)
-		//	WorldGen::GenerateChunkData(ChunkPos{ chunk->chunkPos.x - 1, chunk->chunkPos.y, chunk->chunkPos.z }, chunk->westData);
 
 #if !SYNCRONOUS_GENERATION
-		std::this_thread::sleep_for(1ms);
+		Sleep(1);
 	}
 #endif
+}
+
+void Planet::AddChunkToGenerate(Chunk::Ptr chunk)
+{
+	chunk->generated = false;
+	generatorChunks.enqueue(chunk);
 }
 
 void Planet::AddChunkToGenerate(ChunkPos chunkPos)
@@ -338,14 +290,13 @@ void Planet::AddChunkToGenerate(ChunkPos chunkPos)
 	auto itr = chunks.find(chunkPos);
 	if (itr == chunks.end())
 	{
-		Chunk* chunk = new Chunk(chunkPos, solidShader, waterShader);
+		Chunk::Ptr chunk = std::make_shared<Chunk>(chunkPos, solidShader, waterShader);
 		chunks[chunkPos] = chunk;
-		generatorChunks.enqueue(chunk);
+		AddChunkToGenerate(chunk);
 	}
 	else
 	{
-		itr->second->generated = false;
-		generatorChunks.enqueue(itr->second);
+		AddChunkToGenerate(itr->second);
 	}
 
 	// Create chunk object
@@ -372,7 +323,7 @@ void Planet::AddChunkToGenerate(ChunkPos chunkPos)
 	//}
 }
 
-Chunk* Planet::GetChunk(ChunkPos chunkPos)
+Chunk::Ptr Planet::GetChunk(ChunkPos chunkPos)
 {
 	//chunkMutex.lock();
 	if (chunks.find(chunkPos) == chunks.end())

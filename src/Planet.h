@@ -16,7 +16,7 @@
 #include "ChunkPosHash.h"
 
 constexpr unsigned int CHUNK_WIDTH = 32; // x/z
-constexpr unsigned int CHUNK_HEIGHT = 256; // y
+constexpr unsigned int CHUNK_HEIGHT = 512; // y
 
 class Planet
 {
@@ -33,11 +33,11 @@ public:
 	Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader);
 	~Planet();
 
+	void AddChunkToGenerate(Chunk::Ptr chunk);
 	void AddChunkToGenerate(ChunkPos chunkPos);
-	ChunkData* GetChunkData(ChunkPos chunkPos);
 	void Update(glm::vec3 cameraPos);
 
-	Chunk* GetChunk(ChunkPos chunkPos);
+	Chunk::Ptr GetChunk(ChunkPos chunkPos);
 	void ClearChunkQueue()
 	{
 		clearChunkQueue = 1;
@@ -60,9 +60,7 @@ public:
 	bool deleteChunks = true;
 	bool loadChunks = true;
 
-	std::mutex chunkDeletionMutex;
-	std::shared_mutex chunkBlockMutex;
-	std::mutex chunkMeshMutex;
+	std::mutex chunkMutex;
 
 	DrawingData opaqueDrawingData;
 	DrawingData billboardDrawingData;
@@ -71,8 +69,7 @@ public:
 	int camChunkX = -100, camChunkY = -100, camChunkZ = -100;
 
 private:
-	std::unordered_map<ChunkPos, Chunk*, ChunkPosHash> chunks;
-	//std::unordered_map<ChunkPos, ChunkData*, ChunkPosHash> chunkData;
+	std::unordered_map<ChunkPos, Chunk::Ptr, ChunkPosHash> chunks;
 	std::queue<ChunkPos> chunkQueue;
 	std::queue<ChunkPos> chunkDataQueue;
 	std::queue<ChunkPos> chunkDataDeleteQueue;
@@ -83,10 +80,8 @@ private:
 	Shader* waterShader;
 	Shader* billboardShader;
 
-	std::mutex chunkMutex;
-
 	std::vector<std::thread> generatorThreads;
-	moodycamel::ConcurrentQueue<Chunk*> generatorChunks;
+	moodycamel::ConcurrentQueue<Chunk::Ptr> generatorChunks;
 
 	bool shouldEnd = false;
 };

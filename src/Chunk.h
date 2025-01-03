@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -11,13 +12,15 @@
 #include "ChunkData.h"
 #include "Vertex.h"
 
-class Chunk
+class Chunk : public std::enable_shared_from_this<Chunk>
 {
 public:
+	typedef std::shared_ptr<Chunk> Ptr;
+
 	Chunk(ChunkPos chunkPos, Shader* shader, Shader* waterShader);
 	~Chunk();
 
-	void GenerateChunkMesh(Chunk* left, Chunk* right, Chunk* front, Chunk* back);
+	void GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr front, Chunk::Ptr back);
 	void PrepareRender();
 	void Render(Shader* mainShader, Shader* billboardShader);
 	void RenderWater(Shader* shader);
@@ -26,6 +29,8 @@ public:
 	void UpdateChunk();
 
 public:
+	bool surroundedChunks[4] = {false};
+	std::mutex generatorMutex;
 	ChunkData chunkData;
 	ChunkPos chunkPos;
 	bool ready;

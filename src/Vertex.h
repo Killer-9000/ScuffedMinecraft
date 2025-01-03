@@ -1,39 +1,29 @@
 #pragma once
 
+#include <glm/glm.hpp>
+
 struct Vertex
 {
-	char posX, posY, posZ;
-	char texGridX, texGridY;
+	glm::i8vec3 pos;
+	glm::i8vec2 texGrid;
 	char direction;
 
-	Vertex(char _posX, char _posY, char _posZ, char _texGridX, char _texGridY, char _direction = 0)
-	{
-		posX = _posX;
-		posY = _posY;
-		posZ = _posZ;
-
-		texGridX = _texGridX;
-		texGridY = _texGridY;
-
-		direction = _direction;
-	}
+	Vertex(glm::i8vec3 _pos, glm::i8vec2 _texGrid, char _direction = 0)
+		: pos(_pos), texGrid(_texGrid), direction(_direction)
+	{ }
 };
 
 struct BillboardVertex
 {
-	float posX, posY, posZ;
-	char texGridX, texGridY;
+	glm::u16vec3 pos;
+	glm::i8vec2 texGrid;
 	char direction;
 
-	BillboardVertex(float _posX, float _posY, float _posZ, char _texGridX, char _texGridY, char _direction = 0)
+	BillboardVertex(glm::lowp_fvec3 _pos, glm::i8vec2 _texGrid, char _direction = 0)
+		: texGrid(_texGrid), direction(_direction)
 	{
-		posX = _posX;
-		posY = _posY;
-		posZ = _posZ;
-
-		texGridX = _texGridX;
-		texGridY = _texGridY;
-
-		direction = _direction;
+		pos.x = glm::detail::toFloat16(_pos.x);
+		pos.y = glm::detail::toFloat16(_pos.y);
+		pos.z = glm::detail::toFloat16(_pos.z);
 	}
 };

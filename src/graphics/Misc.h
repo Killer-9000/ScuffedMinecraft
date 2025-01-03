@@ -26,3 +26,21 @@ private:
 	GLenum _flag;
 	GLboolean _oldState;
 };
+
+class ScopedPolygonMode
+{
+public:
+	ScopedPolygonMode(GLenum mode)
+	{
+		glGetIntegerv(GL_POLYGON_MODE, (GLint*)&oldMode);
+		glPolygonMode(GL_FRONT_AND_BACK, mode);
+	}
+
+	~ScopedPolygonMode()
+	{
+		glPolygonMode(GL_FRONT_AND_BACK, oldMode);
+	}
+
+private:
+	GLenum oldMode;
+};

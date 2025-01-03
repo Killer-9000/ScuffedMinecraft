@@ -19,7 +19,7 @@ Physics::RaycastResult Physics::Raycast(const glm::vec3 startPos, const glm::vec
 		int chunkX = resultPos.x >= 0 ? resultPos.x / CHUNK_WIDTH : resultPos.x / CHUNK_WIDTH - 1;
 		int chunkY = resultPos.y >= 0 ? resultPos.y / CHUNK_HEIGHT : resultPos.y / CHUNK_HEIGHT - 1;
 		int chunkZ = resultPos.z >= 0 ? resultPos.z / CHUNK_WIDTH : resultPos.z / CHUNK_WIDTH - 1;
-		Chunk* chunk = Planet::planet->GetChunk(ChunkPos(chunkX, chunkY, chunkZ));
+		Chunk::Ptr chunk = Planet::planet->GetChunk(ChunkPos(chunkX, chunkY, chunkZ));
 		if (chunk == nullptr)
 			continue;
 

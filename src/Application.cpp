@@ -29,7 +29,6 @@
 #include "Blocks.h"
 #include "Physics.h"
 
-#define GLAD_GL_IMPLEMENTATION
 #include <glad/glad.h>
 
 #include <tracy/Tracy.hpp>
@@ -217,8 +216,6 @@ int main(int argc, char *argv[])
 	free(resolved_path);
 #endif
 
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-
 	// Load Texture
 	stbi_set_flip_vertically_on_load(true);
 
@@ -244,7 +241,7 @@ int main(int argc, char *argv[])
 	glfwSwapInterval(vsync ? 1 : 0);
 
 	// Initialize GLAD
-	if (!gladLoaderLoadGL())
+	if (!gladLoadGL())
 	{
 		std::cout << "Failed to initialize GLAD\n";
 		return -1;
@@ -562,7 +559,7 @@ int main(int argc, char *argv[])
 			int localBlockY = blockY - (chunkY * CHUNK_HEIGHT);
 			int localBlockZ = blockZ - (chunkZ * CHUNK_WIDTH);
 
-			Chunk* chunk = Planet::planet->GetChunk(ChunkPos(chunkX, chunkY, chunkZ));
+			Chunk::Ptr chunk = Planet::planet->GetChunk(ChunkPos(chunkX, chunkY, chunkZ));
 			if (chunk != nullptr)
 			{
 				unsigned int blockType = chunk->GetBlockAtPos(
@@ -629,7 +626,7 @@ int main(int argc, char *argv[])
 			ImGui::Text("MS: %f", deltaTime * 100.0f);
 			if (ImGui::Checkbox("VSYNC", &vsync))
 				glfwSwapInterval(vsync ? 1 : 0);
-			ImGui::Text("Chunks: %d (%d rendered)", Planet::planet->numChunks, Planet::planet->numChunksRendered);
+			ImGui::Text("Chunks: %d (%d rendered, %d loading)", Planet::planet->numChunks, Planet::planet->numChunksRendered, Planet::planet->numChunks - Planet::planet->numChunksRendered);
 			ImGui::Text("Position: x: %f, y: %f, z: %f", camera.Position.x, camera.Position.y, camera.Position.z);
 			ImGui::Text("Direction: x: %f, y: %f, z: %f", camera.Front.x, camera.Front.y, camera.Front.z);
 			ImGui::Text("Selected Block: %s", Blocks::blocks[selectedBlock].blockName.c_str());
@@ -799,7 +796,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 		int localBlockY = blockY - (chunkY * CHUNK_HEIGHT);
 		int localBlockZ = blockZ - (chunkZ * CHUNK_WIDTH);
 
-		Chunk* chunk = Planet::planet->GetChunk(ChunkPos(chunkX, chunkY, chunkZ));
+		Chunk::Ptr chunk = Planet::planet->GetChunk(ChunkPos(chunkX, chunkY, chunkZ));
 		if (chunk)
 		{
 			uint16_t blockToReplace = chunk->GetBlockAtPos(localBlockX, localBlockY, localBlockZ);

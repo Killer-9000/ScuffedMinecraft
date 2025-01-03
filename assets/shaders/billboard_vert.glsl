@@ -9,12 +9,12 @@ out vec3 Normal;
 
 uniform float texMultiplier;
 
-uniform mat4 models[128];
+uniform vec3 models[512];
 uniform mat4 view;
 uniform mat4 projection;
 
 void main()
 {
-	gl_Position = projection * view * models[gl_BaseInstance] * vec4(aPos, 1.0);
+	gl_Position = projection * view * vec4(models[gl_BaseInstance] + aPos, 1.0);
 	TexCoord = aTexCoord * texMultiplier;
 }
