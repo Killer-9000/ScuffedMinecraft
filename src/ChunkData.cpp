@@ -115,6 +115,7 @@ uint16_t ChunkData::GetBlock(int index)
 		}
 
 		assert(false && "Failed to find block in compressed list???");
+		return 0;
 	}
 	else
 		return blockIDs[index];

@@ -85,6 +85,179 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath)
 	glDeleteShader(fragment);
 }
 
+Shader::Shader()
+{
+
+}
+
+Shader::~Shader()
+{
+	glDeleteProgram(ID);
+}
+
+void Shader::VertexShader(const char* path)
+{
+	int success;
+	char infoLog[512];
+
+	auto& code = GetCodeFromPath(path);
+	const char* data[] = { code.c_str() };
+
+	shaders[0] = { glCreateShader(GL_VERTEX_SHADER) };
+	glShaderSource(shaders[0], 1, data, nullptr);
+	glCompileShader(shaders[0]);
+
+	// print compile errors if any
+	glGetShaderiv(shaders[0], GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(shaders[0], 512, nullptr, infoLog);
+		std::cout << "Error compiling vertex shader!\n" << infoLog << '\n';
+	}
+}
+
+void Shader::FragmentShader(const char* path)
+{
+	int success;
+	char infoLog[512];
+
+	auto& code = GetCodeFromPath(path);
+	const char* data[] = { code.c_str() };
+
+	shaders[1] = { glCreateShader(GL_FRAGMENT_SHADER) };
+	glShaderSource(shaders[1], 1, data, nullptr);
+	glCompileShader(shaders[1]);
+
+	// print compile errors if any
+	glGetShaderiv(shaders[1], GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(shaders[1], 512, nullptr, infoLog);
+		std::cout << "Error compiling fragment shader!\n" << infoLog << '\n';
+	}
+}
+
+void Shader::ComputeShader(const char* path)
+{
+	int success;
+	char infoLog[512];
+
+	auto& code = GetCodeFromPath(path);
+	const char* data[] = { code.c_str() };
+
+	shaders[2] = { glCreateShader(GL_COMPUTE_SHADER) };
+	glShaderSource(shaders[2], 1, data, nullptr);
+	glCompileShader(shaders[2]);
+
+	// print compile errors if any
+	glGetShaderiv(shaders[2], GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(shaders[2], 512, nullptr, infoLog);
+		std::cout << "Error compiling compute shader!\n" << infoLog << '\n';
+	}
+}
+
+void Shader::TessalationControlShader(const char* path)
+{
+	int success;
+	char infoLog[512];
+
+	auto& code = GetCodeFromPath(path);
+	const char* data[] = { code.c_str() };
+
+	shaders[3] = { glCreateShader(GL_TESS_CONTROL_SHADER) };
+	glShaderSource(shaders[3], 1, data, nullptr);
+	glCompileShader(shaders[3]);
+
+	// print compile errors if any
+	glGetShaderiv(shaders[3], GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(shaders[3], 512, nullptr, infoLog);
+		std::cout << "Error compiling tessalation control shader!\n" << infoLog << '\n';
+	}
+}
+
+void Shader::TessalationEvaluationShader(const char* path)
+{
+	int success;
+	char infoLog[512];
+
+	auto& code = GetCodeFromPath(path);
+	const char* data[] = { code.c_str() };
+
+	shaders[4] = { glCreateShader(GL_TESS_EVALUATION_SHADER) };
+	glShaderSource(shaders[4], 1, data, nullptr);
+	glCompileShader(shaders[4]);
+
+	// print compile errors if any
+	glGetShaderiv(shaders[4], GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(shaders[4], 512, nullptr, infoLog);
+		std::cout << "Error compiling compute shader!\n" << infoLog << '\n';
+	}
+}
+
+bool Shader::Compile()
+{
+	bool failed = false;
+	int success;
+	char infoLog[512];
+
+	ID = glCreateProgram();
+
+	for (int i = 0; i < 5; i++)
+	{
+		if (shaders[i] == UINT32_MAX)
+			continue;
+
+		glAttachShader(ID, shaders[i]);
+		glLinkProgram(ID);
+		// print linking errors if any
+		glGetProgramiv(ID, GL_LINK_STATUS, &success);
+		if (!success)
+		{
+			glGetProgramInfoLog(ID, 512, nullptr, infoLog);
+			std::cout << "Error linking shader program!\n" << infoLog << '\n';
+			failed = true;
+		}
+
+		// delete the shaders, since not needed anymore.
+		glDeleteShader(shaders[i]);
+		shaders[i] = UINT32_MAX;
+	}
+
+	return !failed;
+}
+
+const std::string& Shader::GetCodeFromPath(const char* path)
+{
+	FILE* file;
+	file = fopen(path, "rb");
+
+	if (!file)
+		return "";
+
+	fseek(file, 0, SEEK_END);
+	long length = ftell(file);
+	fseek(file, 0, SEEK_SET);
+
+	if (length == 0)
+	{
+		fclose(file);
+		return "";
+	}
+
+	std::string code(length, '\0');
+	fread(code.data(), 1, length, file);
+
+	fclose(file);
+
+	return code;
+}
+
 void ShaderBinder::setBool(const std::string& name, bool value)
 {
 	setBool(m_shader->GetUniformLocation(name), (int)value);

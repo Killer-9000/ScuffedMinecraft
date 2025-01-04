@@ -37,13 +37,12 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 		DrawingData& data = opaqueDrawingData;
 		data.vbo.Resize(16 * 1024 * 1024 * sizeof(Vertex), GL_DYNAMIC_DRAW);
 		data.ebo.Resize(16 * 1024 * 1024 * sizeof(uint32_t), GL_DYNAMIC_DRAW);
-		data.ibo.Resize(128 * sizeof(DrawElementsIndirectCommand), GL_DYNAMIC_DRAW);
 
 		data.vao.BindVertexBuffer(0, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(1, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(2, data.vbo, 0, sizeof(Vertex));
-		data.vao.SetAttribPointer(0, 3, GL_BYTE, GL_FALSE, offsetof(Vertex, pos));
-		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(Vertex, texGrid));
+		data.vao.SetAttribPointerI(0, 3, GL_BYTE, offsetof(Vertex, pos));
+		data.vao.SetAttribPointerI(1, 2, GL_BYTE, offsetof(Vertex, texGrid));
 		data.vao.SetAttribPointerI(2, 1, GL_BYTE, offsetof(Vertex, direction));
 	}
 
@@ -51,13 +50,12 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 		DrawingData& data = billboardDrawingData;
 		data.vbo.Resize(16 * 1024 * 1024 * sizeof(BillboardVertex), GL_DYNAMIC_DRAW);
 		data.ebo.Resize(16 * 1024 * 1024 * sizeof(uint32_t), GL_DYNAMIC_DRAW);
-		data.ibo.Resize(128 * sizeof(DrawElementsIndirectCommand), GL_DYNAMIC_DRAW);
 
 		data.vao.BindVertexBuffer(0, data.vbo, 0, sizeof(BillboardVertex));
 		data.vao.BindVertexBuffer(1, data.vbo, 0, sizeof(BillboardVertex));
 		data.vao.BindVertexBuffer(2, data.vbo, 0, sizeof(BillboardVertex));
 		data.vao.SetAttribPointer(0, 3, GL_HALF_FLOAT, GL_FALSE, offsetof(BillboardVertex, pos));
-		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(BillboardVertex, texGrid));
+		data.vao.SetAttribPointerI(1, 2, GL_BYTE, offsetof(BillboardVertex, texGrid));
 		data.vao.SetAttribPointerI(2, 1, GL_BYTE, offsetof(BillboardVertex, direction));
 	}
 
@@ -65,15 +63,17 @@ Planet::Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader
 		DrawingData& data = transparentDrawingData;
 		data.vbo.Resize(16 * 1024 * 1024 * sizeof(Vertex), GL_DYNAMIC_DRAW);
 		data.ebo.Resize(16 * 1024 * 1024 * sizeof(uint32_t), GL_DYNAMIC_DRAW);
-		data.ibo.Resize(128 * sizeof(DrawElementsIndirectCommand), GL_DYNAMIC_DRAW);
 
 		data.vao.BindVertexBuffer(0, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(1, data.vbo, 0, sizeof(Vertex));
 		data.vao.BindVertexBuffer(2, data.vbo, 0, sizeof(Vertex));
-		data.vao.SetAttribPointer(0, 3, GL_BYTE, GL_FALSE, offsetof(Vertex, pos));
-		data.vao.SetAttribPointer(1, 2, GL_BYTE, GL_FALSE, offsetof(Vertex, texGrid));
+		data.vao.SetAttribPointerI(0, 3, GL_BYTE, offsetof(Vertex, pos));
+		data.vao.SetAttribPointerI(1, 2, GL_BYTE, offsetof(Vertex, texGrid));
 		data.vao.SetAttribPointerI(2, 1, GL_BYTE, offsetof(Vertex, direction));
 	}
+
+	chunkComputeShader.ComputeShader("assets/shaders/chunk_compute.glsl");
+	chunkComputeShader.Compile();
 }
 
 Planet::~Planet()

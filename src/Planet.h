@@ -27,7 +27,6 @@ public:
 		VertexArrayObject vao;
 		GeoBuffer vbo = GeoBuffer(GL_ARRAY_BUFFER);
 		GeoBuffer ebo = GeoBuffer(GL_ELEMENT_ARRAY_BUFFER);
-		Buffer ibo = Buffer(GL_DRAW_INDIRECT_BUFFER);
 	};
 
 	Planet(Shader* solidShader, Shader* waterShader, Shader* billboardShader);
@@ -65,6 +64,10 @@ public:
 	DrawingData opaqueDrawingData;
 	DrawingData billboardDrawingData;
 	DrawingData transparentDrawingData;
+	Buffer modelsSSBO = Buffer(GL_SHADER_STORAGE_BUFFER);
+	Buffer ibo = Buffer(GL_DRAW_INDIRECT_BUFFER);
+
+	Shader chunkComputeShader;
 
 	int camChunkX = -100, camChunkY = -100, camChunkZ = -100;
 

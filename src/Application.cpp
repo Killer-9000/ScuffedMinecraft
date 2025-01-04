@@ -23,6 +23,7 @@
 #include "graphics/Buffer.h"
 #include "graphics/Shader.h"
 #include "graphics/Framebuffer.h"
+#include "graphics/Misc.h"
 #include "graphics/VertexArrayObject.h"
 #include "Camera.h"
 #include "Planet.h"
@@ -53,8 +54,8 @@ bool escapeDown = false;
 bool f1Down = false;
 
 // Window settings
-float windowX = 1920;
-float windowY = 1080;
+GLsizei windowX = 1920;
+GLsizei windowY = 1080;
 bool vsync = true;
 
 uint16_t selectedBlock = 1;
@@ -128,13 +129,21 @@ uint16_t outlineIndicies[] =
 
 float crosshairVertices[] =
 {
-	windowX / 2 - 13.5f, windowY / 2 - 13.5f,  0.0f, 0.0f,
-	windowX / 2 + 13.5f, windowY / 2 - 13.5f,  1.0f, 0.0f,
-	windowX / 2 + 13.5f, windowY / 2 + 13.5f,  1.0f, 1.0f,
-				  					 
-	windowX / 2 - 13.5f, windowY / 2 - 13.5f,  0.0f, 0.0f,
-	windowX / 2 - 13.5f, windowY / 2 + 13.5f,  0.0f, 1.0f,
-	windowX / 2 + 13.5f, windowY / 2 + 13.5f,  1.0f, 1.0f,
+	//windowX / 2 - 13.5f, windowY / 2 - 13.5f,  0.0f, 0.0f,
+	//windowX / 2 + 13.5f, windowY / 2 - 13.5f,  1.0f, 0.0f,
+	//windowX / 2 + 13.5f, windowY / 2 + 13.5f,  1.0f, 1.0f,
+	//			  					 
+	//windowX / 2 - 13.5f, windowY / 2 - 13.5f,  0.0f, 0.0f,
+	//windowX / 2 - 13.5f, windowY / 2 + 13.5f,  0.0f, 1.0f,
+	//windowX / 2 + 13.5f, windowY / 2 + 13.5f,  1.0f, 1.0f,
+
+	0.45f, 0.45f,  0.0f, 0.0f,
+	0.55f, 0.45f,  1.0f, 0.0f,
+	0.55f, 0.55f,  1.0f, 1.0f,
+
+	0.45f, 0.45f,  0.0f, 0.0f,
+	0.45f, 0.55f,  0.0f, 1.0f,
+	0.55f, 0.55f,  1.0f, 1.0f,
 };
 
 void APIENTRY glDebugOutput(GLenum source,
@@ -230,7 +239,7 @@ int main(int argc, char *argv[])
 	glfwWindowHint(GLFW_CONTEXT_DEBUG, true);
 
 	// Create window
-	GLFWwindow* window = glfwCreateWindow((int)windowX, (int)windowY, "Scuffed Minecraft", nullptr, nullptr);
+	GLFWwindow* window = glfwCreateWindow(windowX, windowY, "Scuffed Minecraft", nullptr, nullptr);
 	if (window == nullptr)
 	{
 		std::cout << "Failed to create GLFW window\n";
@@ -248,7 +257,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Configure viewport and rendering
-	glViewport(0, 0, (GLsizei)windowX, (GLsizei)windowY);
+	glViewport(0, 0, windowX, windowY);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	glfwSetCursorPosCallback(window, mouse_callback);
 	glfwSetScrollCallback(window, scroll_callback);
@@ -292,9 +301,7 @@ int main(int argc, char *argv[])
 	}
 
 	Shader framebufferShader("assets/shaders/framebuffer_vert.glsl", "assets/shaders/framebuffer_frag.glsl");
-
 	Shader outlineShader("assets/shaders/block_outline_vert.glsl", "assets/shaders/block_outline_frag.glsl");
-
 	Shader crosshairShader("assets/shaders/crosshair_vert.glsl", "assets/shaders/crosshair_frag.glsl");
 
 	// Create post-processing framebuffer
@@ -327,7 +334,7 @@ int main(int argc, char *argv[])
 	}
 
 	VertexArrayObject rectVAO;
-	Buffer rectVBO(GL_ARRAY_BUFFER, sizeof(rectangleVertices), &rectangleVertices, GL_STATIC_DRAW);
+	Buffer rectVBO(GL_ARRAY_BUFFER, sizeof(rectangleVertices), rectangleVertices, GL_STATIC_DRAW);
 	rectVAO.BindVertexBuffer(0, rectVBO, 0, 4 * sizeof(float));
 	rectVAO.BindVertexBuffer(1, rectVBO, 0, 4 * sizeof(float));
 	rectVAO.SetAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0);
@@ -340,8 +347,8 @@ int main(int argc, char *argv[])
 	}
 
 	VertexArrayObject outlineVAO;
-	Buffer outlineVBO(GL_ARRAY_BUFFER, sizeof(outlineVertices), &outlineVertices, GL_STATIC_DRAW);
-	Buffer outlineEBO(GL_ELEMENT_ARRAY_BUFFER, sizeof(outlineIndicies), &outlineIndicies, GL_STATIC_DRAW);
+	Buffer outlineVBO(GL_ARRAY_BUFFER, sizeof(outlineVertices), outlineVertices, GL_STATIC_DRAW);
+	Buffer outlineEBO(GL_ELEMENT_ARRAY_BUFFER, sizeof(outlineIndicies), outlineIndicies, GL_STATIC_DRAW);
 	outlineVAO.BindVertexBuffer(0, outlineVBO, 0, 3 * sizeof(float));
 	outlineVAO.SetAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0);
 	{
@@ -350,7 +357,7 @@ int main(int argc, char *argv[])
 	}
 
 	VertexArrayObject crosshairVAO;
-	Buffer crosshairVBO(GL_ARRAY_BUFFER, sizeof(crosshairVertices), &crosshairVertices, GL_STATIC_DRAW);
+	Buffer crosshairVBO(GL_ARRAY_BUFFER, sizeof(crosshairVertices), crosshairVertices, GL_STATIC_DRAW);
 	crosshairVAO.BindVertexBuffer(0, rectVBO, 0, 4 * sizeof(float));
 	crosshairVAO.BindVertexBuffer(1, rectVBO, 0, 4 * sizeof(float));
 	crosshairVAO.SetAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0);
@@ -360,13 +367,13 @@ int main(int argc, char *argv[])
 	Texture2D texture("assets/sprites/block_map.png");
 	texture.SetParameterI(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	texture.SetParameterI(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	texture.GenerateMipmaps();
+	//texture.GenerateMipmaps();
 
 	// Create crosshair texture
 	Texture2D crosshairTexture("assets/sprites/crosshair.png");
 	crosshairTexture.SetParameterI(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	crosshairTexture.SetParameterI(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	crosshairTexture.GenerateMipmaps();
+	//crosshairTexture.GenerateMipmaps();
 
 	// Create camera
 	camera = Camera(glm::vec3(CHUNK_WIDTH / 2, 72.0f, CHUNK_WIDTH / 2));
@@ -375,7 +382,7 @@ int main(int argc, char *argv[])
 
 	Planet::planet = new Planet(&shader, &waterShader, &billboardShader);
 
-	glm::mat4 ortho = glm::ortho(0.0f, windowX, windowY, 0.0f, 0.1f, 10000.0f);
+	glm::mat4 ortho = glm::ortho(0.0f, (float)windowX, (float)windowY, 0.0f, 0.1f, 10000.0f);
 
 	// Initialize ImGui
 	IMGUI_CHECKVERSION();
@@ -383,7 +390,7 @@ int main(int argc, char *argv[])
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	ImGui::StyleColorsDark();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 330");
+	ImGui_ImplOpenGL3_Init(nullptr);
 
 	fpsStartTime = std::chrono::steady_clock::now();
 
@@ -446,7 +453,7 @@ int main(int argc, char *argv[])
 			glm::mat4 view = camera.GetViewMatrix();
 
 			glm::mat4 projection;
-			projection = glm::perspective(glm::radians(camera.Zoom), windowX / windowY, 0.1f, 10000.0f);
+			projection = glm::perspective(glm::radians(camera.Zoom), (float)windowX / windowY, 0.1f, 10000.0f);
 
 			{
 				ShaderBinder _(shader);
@@ -604,18 +611,13 @@ int main(int argc, char *argv[])
 				// Render
 				crosshairTexture.BindUnit(0);
 
-				glDisable(GL_CULL_FACE);
-				glDisable(GL_DEPTH_TEST);
-				glEnable(GL_BLEND);
-				glEnable(GL_COLOR_LOGIC_OP);
+				ScopedEnable _2(GL_CULL_FACE, false);
+				ScopedEnable _3(GL_DEPTH_TEST, false);
+				ScopedEnable _4(GL_BLEND);
+				ScopedEnable _5(GL_COLOR_LOGIC_OP);
 
 				_.setMat4x4("projection", ortho);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
-
-				glEnable(GL_CULL_FACE);
-				glEnable(GL_DEPTH_TEST);
-				glDisable(GL_BLEND);
-				glDisable(GL_COLOR_LOGIC_OP);
 			}
 
 			ZoneScopedN("Application::main UI");
@@ -652,14 +654,9 @@ int main(int argc, char *argv[])
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		}
 
-		// Check and call events and swap buffers
 		{
-			ZoneScopedN("Application::main Swap");
+			ZoneScopedN("Application::main Poll and swap");
 			glfwSwapBuffers(window);
-		}
-
-		{
-			ZoneScopedN("Application::main Poll events");
 			glfwPollEvents();
 		}
 
@@ -677,9 +674,9 @@ int main(int argc, char *argv[])
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
-	windowX = (float)width;
-	windowY = (float)height;
-	glViewport(0, 0, (GLsizei)windowX, (GLsizei)windowY);
+	windowX = width;
+	windowY = height;
+	glViewport(0, 0, windowX, windowY);
 
 	GLint lastTexture = 0;
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexture);

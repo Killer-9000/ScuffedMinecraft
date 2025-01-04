@@ -98,6 +98,16 @@ public:
 	{
 		glBindBuffer(target ? target : m_target, m_id);
 	}
+
+	void BindBase(GLuint index, GLenum target = 0)
+	{
+		glBindBufferBase(target ? target : m_target, index, m_id);
+	}
+
+	void BindRange(GLuint index, GLintptr offset, GLsizeiptr size, GLenum target = 0)
+	{
+		glBindBufferRange(target ? target : m_target, index, m_id, offset, size);
+	}
 };
 
 class GeoBuffer : public Buffer

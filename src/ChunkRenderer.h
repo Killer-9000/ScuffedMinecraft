@@ -5,6 +5,8 @@
 
 namespace ChunkRenderer
 {
+	constexpr uint32_t MAX_DRAW_COMMANDS = 768;
+
 	void RenderOpaque(
 		std::unordered_map<ChunkPos, Chunk::Ptr, ChunkPosHash>& chunks,
 		Shader* solidShader, Shader* billboardShader,
@@ -16,6 +18,15 @@ namespace ChunkRenderer
 		out_chunksRendered = 0;
 
 		ScopedEnable _(GL_BLEND, false);
+
+		if (Planet::planet->modelsSSBO.m_allocated == 0)
+		{
+			Planet::planet->modelsSSBO.Resize(sizeof(glm::vec3) * MAX_DRAW_COMMANDS, GL_DYNAMIC_DRAW);
+		}
+		if (Planet::planet->ibo.m_allocated == 0)
+		{
+			Planet::planet->ibo.Resize(sizeof(DrawElementsIndirectCommand) * MAX_DRAW_COMMANDS, GL_DYNAMIC_DRAW);
+		}
 
 		for (auto& [chunkPos, chunk] : chunks)
 		{
@@ -37,10 +48,9 @@ namespace ChunkRenderer
 
 			VAOBinder _3(data.vao);
 			BufferBinder _4(data.ebo);
-			BufferBinder _5(data.ibo);
+			BufferBinder _5(Planet::planet->ibo);
 
 			GLint modelLoc = solidShader->GetUniformLocation("models");
-			constexpr uint32_t MAX_DRAW_COMMANDS = 512;
 			DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
 			glm::vec3 matrices[MAX_DRAW_COMMANDS];
 			int drawCount = 0;
@@ -62,7 +72,7 @@ namespace ChunkRenderer
 				if (drawCount == MAX_DRAW_COMMANDS)
 				{
 					_2.setFloat3s(modelLoc, drawCount, matrices);
-					data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+					Planet::planet->ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 					glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 					drawCount = 0;
 				}
@@ -71,9 +81,11 @@ namespace ChunkRenderer
 			if (drawCount != 0)
 			{
 				_2.setFloat3s(modelLoc, drawCount, matrices);
-				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+				Planet::planet->ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 			}
+
+			Buffer::ClearBind(GL_SHADER_STORAGE_BUFFER);
 		}
 
 		{
@@ -87,10 +99,9 @@ namespace ChunkRenderer
 
 			VAOBinder _3(data.vao);
 			BufferBinder _4(data.ebo);
-			BufferBinder _5(data.ibo);
+			BufferBinder _5(Planet::planet->ibo);
 
 			GLint modelLoc = billboardShader->GetUniformLocation("models");
-			constexpr uint32_t MAX_DRAW_COMMANDS = 512;
 			DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
 			glm::vec3 matrices[MAX_DRAW_COMMANDS];
 			int drawCount = 0;
@@ -111,7 +122,7 @@ namespace ChunkRenderer
 				if (drawCount == MAX_DRAW_COMMANDS)
 				{
 					_2.setFloat3s(modelLoc, drawCount, matrices);
-					data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+					Planet::planet->ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 					glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 					drawCount = 0;
 				}
@@ -120,7 +131,7 @@ namespace ChunkRenderer
 			if (drawCount != 0)
 			{
 				_2.setFloat3s(modelLoc, drawCount, matrices);
-				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+				Planet::planet->ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 			}
 		}
@@ -141,10 +152,9 @@ namespace ChunkRenderer
 
 		VAOBinder _3(data.vao);
 		BufferBinder _4(data.ebo);
-		BufferBinder _5(data.ibo);
+		BufferBinder _5(Planet::planet->ibo);
 
 		GLint modelLoc = waterShader->GetUniformLocation("models");
-		constexpr uint32_t MAX_DRAW_COMMANDS = 512;
 		DrawElementsIndirectCommand commands[MAX_DRAW_COMMANDS];
 		glm::vec3 matrices[MAX_DRAW_COMMANDS];
 		int drawCount = 0;
@@ -165,7 +175,7 @@ namespace ChunkRenderer
 			if (drawCount == MAX_DRAW_COMMANDS)
 			{
 				_.setFloat3s(modelLoc, drawCount, matrices);
-				data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+				Planet::planet->ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 				drawCount = 0;
 			}
@@ -174,7 +184,7 @@ namespace ChunkRenderer
 		if (drawCount != 0)
 		{
 			_.setFloat3s(modelLoc, drawCount, matrices);
-			data.ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
+			Planet::planet->ibo.SetData(sizeof(commands), commands, GL_DYNAMIC_DRAW);
 			glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, drawCount, sizeof(DrawElementsIndirectCommand));
 		}
 	}

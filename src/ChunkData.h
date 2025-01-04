@@ -17,7 +17,7 @@ struct ChunkData
 	//uint16_t* pallet;
 	//Bitset blockIdxs;
 
-	uint16_t* blockIDs;
+	uint16_t* blockIDs = nullptr;
 	std::list<CompressedBlockID> compressedBlockIds;
 	bool compressed = false;
 
@@ -29,8 +29,8 @@ struct ChunkData
 	void Decompress();
 	void Compress();
 
-	inline static int GetIndex(int x, int y, int z);
-	inline static int GetIndex(ChunkPos localBlockPos);
+	__forceinline static int GetIndex(int x, int y, int z);
+	__forceinline static int GetIndex(ChunkPos localBlockPos);
 
 	uint16_t GetBlock(ChunkPos blockPos);
 	uint16_t GetBlock(int x, int y, int z);

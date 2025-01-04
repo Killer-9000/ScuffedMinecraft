@@ -53,7 +53,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 	billboardVertices.clear();
 	billboardIndices.clear();
 
-	if (true)
+	if (false)
 	{
 		enum
 		{
@@ -64,7 +64,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 			TOP,
 			BOTTOM
 		};
-		std::bitset<CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH * 6> exposedFaces;
+		auto* exposedFaces = new std::bitset<CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH * 6>;
 		for (int x = 0; x < CHUNK_WIDTH; x++)
 		{
 			for (int z = 0; z < CHUNK_WIDTH; z++)
@@ -75,47 +75,75 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 
 					if (chunkData.GetBlock(index) == Blocks::AIR)
 					{
-						exposedFaces[index * 6 + FRONT] = 0;
-						exposedFaces[index * 6 + BACK] = 0;
-						exposedFaces[index * 6 + LEFT] = 0;
-						exposedFaces[index * 6 + RIGHT] = 0;
-						exposedFaces[index * 6 + TOP] = 0;
-						exposedFaces[index * 6 + BOTTOM] = 0;
+						exposedFaces->reset(index * 6 + FRONT);
+						exposedFaces->reset(index * 6 + BACK);
+						exposedFaces->reset(index * 6 + LEFT);
+						exposedFaces->reset(index * 6 + RIGHT);
+						exposedFaces->reset(index * 6 + TOP);
+						exposedFaces->reset(index * 6 + BOTTOM);
 
 						continue;
 					}
 
-					exposedFaces[index * 6 + FRONT] = 1;
-					exposedFaces[index * 6 + BACK] = 1;
-					exposedFaces[index * 6 + LEFT] = 1;
-					exposedFaces[index * 6 + RIGHT] = 1;
-					exposedFaces[index * 6 + TOP] = 1;
-					exposedFaces[index * 6 + BOTTOM] = 1;
+					exposedFaces->set(index * 6 + FRONT);
+					exposedFaces->set(index * 6 + BACK);
+					exposedFaces->set(index * 6 + LEFT);
+					exposedFaces->set(index * 6 + RIGHT);
+					exposedFaces->set(index * 6 + TOP);
+					exposedFaces->set(index * 6 + BOTTOM);
 
 					if (z == CHUNK_WIDTH - 1 || chunkData.GetBlock(x, y, z + 1) != Blocks::AIR)
-						exposedFaces[index * 6 + FRONT] = 0;
+						exposedFaces->reset(index * 6 + FRONT);
 					if (z == 0 || chunkData.GetBlock(x, y, z - 1) != Blocks::AIR)
-						exposedFaces[index * 6 + BACK] = 0;
+						exposedFaces->reset(index * 6 + BACK);
 					if (x == 0 || chunkData.GetBlock(x - 1, y, z) != Blocks::AIR)
-						exposedFaces[index * 6 + LEFT] = 0;
+						exposedFaces->reset(index * 6 + LEFT);
 					if (x == CHUNK_WIDTH - 1 || chunkData.GetBlock(x + 1, y, z) != Blocks::AIR)
-						exposedFaces[index * 6 + RIGHT] = 0;
+						exposedFaces->reset(index * 6 + RIGHT);
 					if (y == CHUNK_HEIGHT - 1 || chunkData.GetBlock(x, y + 1, z) != Blocks::AIR)
-						exposedFaces[index * 6 + TOP] = 0;
+						exposedFaces->reset(index * 6 + TOP);
 					if (y == 0 || chunkData.GetBlock(x, y - 1, z) != Blocks::AIR)
-						exposedFaces[index * 6 + BOTTOM] = 0;
+						exposedFaces->reset(index * 6 + BOTTOM);
 				}
 			}
 		}
 
-		mainVertices.reserve(10000);
-		mainIndices.reserve(10000);
-		waterVertices.reserve(10000);
-		waterIndices.reserve(10000);
-		billboardVertices.reserve(10000);
-		billboardIndices.reserve(10000);
+		mainVertices.reserve(5000);
+		mainIndices.reserve(5000);
+		waterVertices.reserve(5000);
+		waterIndices.reserve(5000);
+		billboardVertices.reserve(5000);
+		billboardIndices.reserve(5000);
 
 		uint32_t currentVertex = 0;
+
+		uint16_t* blockIDs = new uint16_t[CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH];
+		memcpy(blockIDs, chunkData.blockIDs, sizeof(blockIDs));
+
+		glm::ivec3 start = {-1,-1,-1};
+		uint16_t startBlockID = -1;
+
+		for (int y = 0; y < CHUNK_HEIGHT; y++)
+		{
+			for (int x = 0; x < CHUNK_WIDTH; x++)
+			{
+				for (int z = 0; z < CHUNK_WIDTH; z++)
+				{
+					int index = ChunkData::GetIndex(x, y, z);
+
+					if (start.x == -1)
+					{
+						start = { x, y, z };
+						startBlockID = blockIDs[index];
+					}
+
+					if (blockIDs[index] != startBlockID)
+					{
+
+					}
+				}
+			}
+		}
 
 		for (int x = 0; x < CHUNK_WIDTH; x++)
 		{
@@ -124,9 +152,24 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 				for (int y = 0; y < CHUNK_HEIGHT; y++)
 				{
 					int index = ChunkData::GetIndex(x, y, z);
-					const Block& block = Blocks::blocks[chunkData.GetBlock(index)];
+					uint16_t blockID = chunkData.GetBlock(index);
 
-					if (exposedFaces[index * 6 + FRONT])
+					if (start.x == -1)
+					{
+						start = { x, y, z };
+						startBlockID = blockID;
+					}
+
+					if (blockID != startBlockID)
+						goto new_face;
+
+
+
+					new_face:
+
+					const Block& block = Blocks::blocks[startBlockID];
+
+					if (exposedFaces->test(index * 6 + FRONT))
 					{
 						mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block.sideMinX, block.sideMinY}, 1 });
 						mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block.sideMaxX, block.sideMinY}, 1 });
@@ -141,7 +184,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 						mainIndices.push_back(currentVertex + 3);
 						currentVertex += 4;
 					}
-					if (exposedFaces[index * 6 + BACK])
+					if (exposedFaces->test(index * 6 + BACK))
 					{
 						mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block.sideMinX, block.sideMinY}, 0 });
 						mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block.sideMaxX, block.sideMinY}, 0 });
@@ -156,7 +199,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 						mainIndices.push_back(currentVertex + 3);
 						currentVertex += 4;
 					}
-					if (exposedFaces[index * 6 + LEFT])
+					if (exposedFaces->test(index * 6 + LEFT))
 					{
 						mainVertices.push_back({ { x + 0, y + 0, z + 0 }, { block.sideMinX, block.sideMinY}, 2 });
 						mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block.sideMaxX, block.sideMinY}, 2 });
@@ -171,7 +214,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 						mainIndices.push_back(currentVertex + 3);
 						currentVertex += 4;
 					}
-					if (exposedFaces[index * 6 + RIGHT])
+					if (exposedFaces->test(index * 6 + RIGHT))
 					{
 						mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block.sideMinX, block.sideMinY}, 3 });
 						mainVertices.push_back({ { x + 1, y + 0, z + 0 }, { block.sideMaxX, block.sideMinY}, 3 });
@@ -186,7 +229,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 						mainIndices.push_back(currentVertex + 3);
 						currentVertex += 4;
 					}
-					if (exposedFaces[index * 6 + TOP])
+					if (exposedFaces->test(index * 6 + TOP))
 					{
 						mainVertices.push_back({ { x + 0, y + 1, z + 1 }, { block.topMinX, block.topMinY}, 5 });
 						mainVertices.push_back({ { x + 1, y + 1, z + 1 }, { block.topMaxX, block.topMinY}, 5 });
@@ -201,7 +244,7 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 						mainIndices.push_back(currentVertex + 3);
 						currentVertex += 4;
 					}
-					if (exposedFaces[index * 6 + BOTTOM])
+					if (exposedFaces->test(index * 6 + BOTTOM))
 					{
 						mainVertices.push_back({ { x + 1, y + 0, z + 1 }, { block.bottomMinX, block.bottomMinY}, 4 });
 						mainVertices.push_back({ { x + 0, y + 0, z + 1 }, { block.bottomMaxX, block.bottomMinY}, 4 });
@@ -216,9 +259,15 @@ void Chunk::GenerateChunkMesh(Chunk::Ptr left, Chunk::Ptr right, Chunk::Ptr fron
 						mainIndices.push_back(currentVertex + 3);
 						currentVertex += 4;
 					}
+
+					start = { x, y, z };
+					startBlockID = blockID;
 				}
 			}
 		}
+
+		delete[] blockIDs;
+		delete exposedFaces;
 	}
 	else if (true)
 	{

@@ -1,4 +1,4 @@
-#version 330 core
+#version 410 core
 
 in vec2 TexCoord;
 
@@ -15,4 +15,5 @@ void main()
 
 	texResult.a = 0.8;
 	FragColor = texResult;
+	//FragColor = vec4(1.0f);
 }

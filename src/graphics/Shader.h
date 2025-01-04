@@ -9,10 +9,20 @@
 class Shader
 {
 public:
-	unsigned int ID;
+	GLuint ID = UINT32_MAX;
 
 	// constructor reads and builds the shader
 	Shader(const char* vertexPath, const char* fragmentPath);
+	Shader();
+	~Shader();
+
+	void VertexShader(const char* path);
+	void FragmentShader(const char* path);
+	//void GeometryShader(const char* path); // Too slow, don't used these.
+	void ComputeShader(const char* path);
+	void TessalationControlShader(const char* path);
+	void TessalationEvaluationShader(const char* path);
+	bool Compile();
 
 	void Bind()
 	{
@@ -27,6 +37,11 @@ public:
 	}
 
 protected:
+
+	const std::string& GetCodeFromPath(const char* path);
+
+	//                    V   F   C   TC  TE
+	GLuint shaders[5] = { UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX };
 	std::unordered_map<std::string, GLint> uniformLocations;
 };
 
